@@ -1,0 +1,26 @@
+Sample house photos
+
+These are reusable Indian home-design photos selected as an alternative to
+copying Pinterest images. They are bundled as local Home-page previews, cropped
+by the app for display, and are not customer uploads.
+
+house-01.jpg
+“Modern residential architecture with curved design and exposed brick in
+Mysore, India” by Evan Lovely
+https://commons.wikimedia.org/wiki/File:Modern_residential_architecture_with_curved_design_and_exposed_brick_in_Mysore,_India.jpg
+CC BY 2.0: https://creativecommons.org/licenses/by/2.0/
+
+house-02.jpg
+“Modern house in kerala” by Kottakkalnet
+https://commons.wikimedia.org/wiki/File:Modern_house_in_kerala.jpg
+CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/
+
+house-03.jpg
+“Nalukettu House of Kunnappully family” by Ramesh Kunnappully
+https://commons.wikimedia.org/wiki/File:Nalukettu_House_of_Kunnappully_family.jpg
+CC BY-SA 3.0: https://creativecommons.org/licenses/by-sa/3.0/
+
+house-04.jpg
+“Traditional Home, Malappuram, Kerala” by Sidheeq
+https://commons.wikimedia.org/wiki/File:Traditional_Home,_Malappuram,_Kerala.jpg
+CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/

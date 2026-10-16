@@ -1,0 +1,483 @@
+.project-dashboard {
+  padding-top: 42px;
+  background: #f8f5ef;
+}
+
+.project-dashboard-toolbar,
+.project-toolbar-actions,
+.project-current-card,
+.project-section-heading,
+.project-filters,
+.project-form-actions {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.project-dashboard-toolbar {
+  margin: 24px 0 16px;
+  padding: 18px;
+  border: 1px solid #e4e9e0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.project-dashboard-toolbar label,
+.project-filters label,
+.project-finance-card label,
+.project-form-card label {
+  display: grid;
+  gap: 7px;
+  color: #536257;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.project-dashboard-toolbar select,
+.project-filters input,
+.project-filters select,
+.project-finance-card input,
+.project-form-card input,
+.project-form-card select {
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #d9e0d8;
+  border-radius: 8px;
+  background: #fff;
+  color: #263b2e;
+  font: inherit;
+}
+
+.project-toolbar-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.project-toolbar-actions .home-primary-button,
+.project-form-actions .home-primary-button,
+.project-finance-card form .home-primary-button {
+  margin: 0;
+}
+
+.project-secondary-button {
+  min-height: 42px;
+  padding: 10px 14px;
+  border: 1px solid #cbd8ca;
+  border-radius: 8px;
+  background: #f5f8f2;
+  color: #244c3a;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-secondary-button:hover {
+  background: #e8efe4;
+}
+
+.project-secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.project-error {
+  color: #9a362d;
+  font-size: 13px;
+}
+
+.project-sync-status {
+  margin: 12px 0;
+  color: #536257;
+  font-size: 12px;
+}
+
+.project-sync-status.is-error,
+.project-sync-status.is-save-error {
+  color: #9a362d;
+}
+
+.project-sync-status button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #244c3a;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.project-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.project-summary-grid article {
+  display: grid;
+  gap: 8px;
+  min-height: 90px;
+  padding: 16px;
+  border: 1px solid #e5e9e2;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.project-summary-grid article span {
+  color: #68756b;
+  font-size: 12px;
+}
+
+.project-summary-grid article strong {
+  color: #244c3a;
+  font-size: 20px;
+}
+
+.project-current-card,
+.overall-summary-panel,
+.project-finance-card {
+  padding: 20px;
+  border: 1px solid #e5e9e2;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.project-current-card {
+  align-items: center;
+  margin: 16px 0 30px;
+}
+
+.project-current-card h3 {
+  margin: 10px 0 6px;
+  color: #244c3a;
+  font-size: 22px;
+}
+
+.project-current-card p {
+  margin: 4px 0;
+  color: #68756b;
+  font-size: 13px;
+}
+
+.project-status-badge {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 20px;
+  background: #edf0eb;
+  color: #536257;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-in-progress {
+  background: #e2f0e5;
+  color: #275b38;
+}
+
+.status-on-hold {
+  background: #fff0d9;
+  color: #82541d;
+}
+
+.status-completed {
+  background: #e5e8f4;
+  color: #424c7c;
+}
+
+.overall-summary-panel {
+  margin: -14px 0 32px;
+}
+
+.overall-summary-panel h3,
+.project-finance-card h3 {
+  margin: 0 0 16px;
+  color: #244c3a;
+}
+
+.project-table-scroll {
+  overflow-x: auto;
+}
+
+.project-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.project-table th,
+.project-table td {
+  padding: 11px 10px;
+  border-bottom: 1px solid #edf0eb;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.project-table th {
+  background: #f5f7f2;
+  color: #536257;
+}
+
+.project-section-heading {
+  align-items: end;
+  margin: 28px 0 14px;
+}
+
+.project-section-heading h3 {
+  margin: 0 0 6px;
+  color: #244c3a;
+  font-size: 20px;
+}
+
+.project-section-heading p {
+  margin: 0;
+  color: #68756b;
+  font-size: 13px;
+}
+
+.project-filters {
+  align-items: end;
+}
+
+.project-filters input {
+  min-width: 230px;
+}
+
+.project-list-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.project-list-item {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.project-list-card {
+  width: 100%;
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  min-height: 310px;
+  padding: 16px;
+  border: 1px solid #e1e7df;
+  border-radius: 12px;
+  background: #fff;
+  color: #536257;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-list-card.without-house-photo {
+  min-height: 220px;
+}
+
+.project-list-card:hover,
+.project-list-card.is-active {
+  border-color: #6d9878;
+  box-shadow: 0 5px 16px #244c3a14;
+}
+
+.project-list-card strong {
+  color: #244c3a;
+  font-size: 16px;
+}
+
+.project-list-card:focus-visible {
+  outline: 3px solid #356b4d;
+  outline-offset: 3px;
+}
+
+.project-list-card span:not(.project-status-badge) {
+  font-size: 12px;
+}
+
+.project-house-illustration {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 9px;
+}
+
+.project-list-card small {
+  color: #7b877d;
+}
+
+.project-remove-button {
+  justify-self: end;
+  padding: 6px 9px;
+  border: 1px solid #d8a7a1;
+  border-radius: 7px;
+  background: #fff;
+  color: #9c3730;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.project-remove-button:disabled {
+  border-color: #d8ddd7;
+  color: #7b877d;
+  cursor: not-allowed;
+}
+
+.project-remove-button:hover {
+  background: #fff4f2;
+}
+
+.project-remove-button:disabled:hover {
+  background: #fff;
+}
+
+.project-remove-button:focus-visible {
+  outline: 3px solid #9c3730;
+  outline-offset: 2px;
+}
+
+.project-delete-note {
+  justify-self: end;
+  color: #7b877d;
+}
+
+.project-empty-state {
+  color: #68756b;
+  font-size: 13px;
+}
+
+.project-finance-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 30px;
+}
+
+.project-finance-card form {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.project-finance-list {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-finance-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid #edf0eb;
+  color: #344c3d;
+  font-size: 13px;
+}
+
+.project-finance-list li span {
+  display: grid;
+  gap: 4px;
+}
+
+.project-finance-list small {
+  color: #7b877d;
+}
+
+.project-finance-list button {
+  padding: 5px 8px;
+  border: 1px solid #e4c6c2;
+  border-radius: 7px;
+  background: #fff;
+  color: #9a362d;
+  cursor: pointer;
+}
+
+.project-form-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: 20px;
+  background: #15271dcc;
+}
+
+.project-form-card {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 480px);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 24px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 50px #15271d40;
+}
+
+.project-form-card h3 {
+  margin: 0;
+  color: #244c3a;
+}
+
+.project-form-actions {
+  justify-content: end;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .project-list-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-finance-card form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .project-dashboard-toolbar,
+  .project-current-card,
+  .project-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-toolbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-toolbar-actions button {
+    width: 100%;
+  }
+
+  .project-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-filters,
+  .project-finance-columns {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .project-filters input {
+    min-width: 0;
+  }
+
+  .project-list-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-finance-card form {
+    grid-template-columns: 1fr;
+  }
+}
