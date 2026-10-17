@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import "./Home.css";
+import PainterMascot from "./PainterMascot";
 import {
   applyExteriorColours,
   detectExteriorSurfaces,
@@ -12,6 +13,9 @@ import {
   saveProjectData,
 } from "./measurementApi";
 import ProjectDashboard from "./ProjectDashboard";
+import PaintingDesign from "./components/PaintingDesign";
+
+
 const QuotationReport = lazy(() => import("./QuotationReport"));
 
 const paintCoveragePresets = {
@@ -39,12 +43,105 @@ const paintProductNames = {
   custom: "Custom coverage product",
 };
 
+const WALLS_PER_ROOM = 5;
+
 const designSurfaceLabels = {
   walls: "Walls",
   borders: "Borders",
   windows: "Windows",
   doors: "Doors",
   gates: "Gates",
+};
+
+const designPaintBrands = {
+  asianPaints: {
+    name: "Asian Paints",
+    shades: [
+      { name: "Ivory Mist", color: "#F1E8D7" },
+      { name: "Sage Leaf", color: "#9BAF91" },
+      { name: "Sky Wash", color: "#9FC5D4" },
+      { name: "Rose Clay", color: "#D69A91" },
+      { name: "Golden Sand", color: "#D8B779" },
+      { name: "Deep Teal", color: "#356B68" },
+    ],
+  },
+  berger: {
+    name: "Berger",
+    shades: [
+      { name: "Pink Possum", color: "#F5E2E9", code: "1P2816" },
+      { name: "Teaberry Buds", color: "#F3D4E6", code: "6P0172" },
+      { name: "Shibuya Pink", color: "#D06CAD", code: "1D2819" },
+      { name: "Beigeful", color: "#FAE2CC", code: "2P0601" },
+      { name: "Coral Sea", color: "#FEB799", code: "1T0223" },
+      { name: "White Glove", color: "#FCF2DC", code: "3P0057" },
+      { name: "Sundry", color: "#FFCD83", code: "2T0685" },
+      { name: "Brazen Green", color: "#006259", code: "4A2183" },
+      { name: "Botany Blue", color: "#A5E3DF", code: "5P0286" },
+      { name: "Lemon Chiffon", color: "#FAF7CE", code: "3P0802" },
+      { name: "Secrets Of The Sea", color: "#4B9FB5", code: "5D1046" },
+      { name: "Blue Bead", color: "#DBEDEC", code: "5P2223" },
+      { name: "Blue Gin", color: "#B2E1E5", code: "5T2224" },
+      { name: "Ultra Violet", color: "#6D436E", code: "5A0423" },
+      { name: "Lavender Mist", color: "#E1E4EA", code: "6P1233" },
+      { name: "Big Falls", color: "#BECADB", code: "6T1203" },
+      { name: "Mowed Lawn", color: "#7B723E", code: "7A2411" },
+      { name: "Brunette", color: "#977A6E", code: "8D2554" },
+      { name: "Spring Banquet", color: "#CEE4E1", code: "7P1449" },
+      { name: "Picnic Mat", color: "#C9BAA1", code: "3T0246" },
+      { name: "Southern Plantation", color: "#E1E0DC", code: "8P1689" },
+      { name: "Versailles", color: "#CCCDC9", code: "8T1691" },
+      { name: "Royal Velvet", color: "#554460", code: "5A0424" },
+      { name: "Campfire Glow", color: "#DF5B3C", code: "1A0369" },
+      { name: "The Heat Is On", color: "#C03630", code: "1A3024" },
+      { name: "Savvy White", color: "#F0EFE7", code: "3P1843" },
+      { name: "Powder Puff", color: "#EFF0EC", code: "3P1845" },
+      { name: "White Swan", color: "#F2EEE5", code: "2P1847" },
+    ],
+  },
+  nerolac: {
+    name: "Nerolac",
+    shades: [
+      { name: "Soft Linen", color: "#EEE9DB" },
+      { name: "Mint Garden", color: "#A3C1A5" },
+      { name: "Harbour Blue", color: "#8DB5CE" },
+      { name: "Coral Tint", color: "#DA9684" },
+      { name: "Warm Ochre", color: "#CDA66F" },
+      { name: "Smoky Violet", color: "#82758F" },
+    ],
+  },
+  dulux: {
+    name: "Dulux",
+    shades: [
+      { name: "Timeless Cream", color: "#F1E4C8" },
+      { name: "Willow Tree", color: "#A6B59A" },
+      { name: "Coastal Air", color: "#A5C7D3" },
+      { name: "Powder Blush", color: "#D9A7A5" },
+      { name: "Spiced Honey", color: "#C99A59" },
+      { name: "Night Blue", color: "#50687D" },
+    ],
+  },
+  indigo: {
+    name: "Indigo Paints",
+    shades: [
+      { name: "Pearl Shell", color: "#F2EDE2" },
+      { name: "Bamboo Green", color: "#98AD8A" },
+      { name: "Rain Cloud", color: "#9BBBCB" },
+      { name: "Peach Bloom", color: "#DEA58C" },
+      { name: "Desert Dune", color: "#C9AD86" },
+      { name: "Pine Shade", color: "#4B7161" },
+    ],
+  },
+  nippon: {
+    name: "Nippon Paint",
+    shades: [
+      { name: "Warm White", color: "#F3EDE1" },
+      { name: "Meadow Green", color: "#A2B99A" },
+      { name: "Clear Blue", color: "#97BDD2" },
+      { name: "Petal Pink", color: "#DDA1AF" },
+      { name: "Cocoa Beige", color: "#C7A88A" },
+      { name: "Lagoon Teal", color: "#4B8582" },
+    ],
+  },
 };
 
 const designColourPresets = [
@@ -79,6 +176,147 @@ const designColourPresets = [
     },
   },
 ];
+
+function getColourFamily(red, green, blue) {
+  const maximum = Math.max(red, green, blue) / 255;
+  const minimum = Math.min(red, green, blue) / 255;
+  const lightness = (maximum + minimum) / 2;
+  const saturation =
+    maximum === minimum
+      ? 0
+      : (maximum - minimum) / (1 - Math.abs(2 * lightness - 1));
+  if (lightness >= 0.76 && saturation < 0.24) return "white";
+  if (saturation < 0.16) return "neutral";
+
+  const redChannel = red / 255;
+  const greenChannel = green / 255;
+  const blueChannel = blue / 255;
+  let hue;
+  if (maximum === redChannel) {
+    hue = 60 * (((greenChannel - blueChannel) / (maximum - minimum)) % 6);
+  } else if (maximum === greenChannel) {
+    hue = 60 * ((blueChannel - redChannel) / (maximum - minimum) + 2);
+  } else {
+    hue = 60 * ((redChannel - greenChannel) / (maximum - minimum) + 4);
+  }
+  if (hue < 0) hue += 360;
+
+  if (hue >= 15 && hue < 45 && lightness < 0.58) return "brown";
+  if (hue < 15 || hue >= 345) return "red";
+  if (hue < 45) return "orange";
+  if (hue < 70) return "yellow";
+  if (hue < 165) return "green";
+  if (hue < 195) return "cyan";
+  if (hue < 265) return "blue";
+  if (hue < 310) return "purple";
+  return "pink";
+}
+
+function getPhotoDominantColours({ width, height, pixels }) {
+  const stride = Math.max(1, Math.ceil(Math.sqrt((width * height) / 20000)));
+  const colourFamilies = new Map();
+
+  for (let y = 0; y < height; y += stride) {
+    for (let x = 0; x < width; x += stride) {
+      const offset = (y * width + x) * 4;
+      const red = pixels[offset];
+      const green = pixels[offset + 1];
+      const blue = pixels[offset + 2];
+      const family = getColourFamily(red, green, blue);
+      const current = colourFamilies.get(family) || {
+        count: 0,
+        red: 0,
+        green: 0,
+        blue: 0,
+      };
+      current.count += 1;
+      current.red += red;
+      current.green += green;
+      current.blue += blue;
+      colourFamilies.set(family, current);
+    }
+  }
+
+  const sampledPixelCount = [...colourFamilies.values()].reduce(
+    (total, family) => total + family.count,
+    0
+  );
+
+  return [...colourFamilies.entries()]
+    .filter(([, family]) => family.count / sampledPixelCount >= 0.035)
+    .sort((first, second) => second[1].count - first[1].count)
+    .slice(0, 8)
+    .map(([family, colour]) => ({
+      family,
+      share: colour.count / sampledPixelCount,
+      color: `#${[colour.red, colour.green, colour.blue]
+        .map((channel) =>
+          Math.round(channel / colour.count)
+            .toString(16)
+            .padStart(2, "0")
+        )
+        .join("")}`,
+    }));
+}
+
+function hexToLab(hex) {
+  const channels = [1, 3, 5].map((offset) =>
+    Number.parseInt(hex.slice(offset, offset + 2), 16) / 255
+  );
+  const [red, green, blue] = channels.map((channel) =>
+    channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4
+  );
+  const x = (red * 0.4124564 + green * 0.3575761 + blue * 0.1804375) / 0.95047;
+  const y = red * 0.2126729 + green * 0.7151522 + blue * 0.072175;
+  const z = (red * 0.0193339 + green * 0.119192 + blue * 0.9503041) / 1.08883;
+  const transform = (value) =>
+    value > 0.008856 ? Math.cbrt(value) : 7.787 * value + 16 / 116;
+  const [labX, labY, labZ] = [x, y, z].map(transform);
+
+  return [
+    116 * labY - 16,
+    500 * (labX - labY),
+    200 * (labY - labZ),
+  ];
+}
+
+function getSimilarDesignShades(shades, photoColours) {
+  const matchingShades = [];
+  const orderedColours = [...photoColours].sort(
+    (first, second) => second.share - first.share
+  );
+
+  orderedColours.forEach(({ family, color }) => {
+    const photoLab = hexToLab(color);
+    const familyShades = shades
+      .filter((shade) => getColourFamily(
+        Number.parseInt(shade.color.slice(1, 3), 16),
+        Number.parseInt(shade.color.slice(3, 5), 16),
+        Number.parseInt(shade.color.slice(5, 7), 16)
+      ) === family)
+      .map((shade) => {
+        const shadeLab = hexToLab(shade.color);
+        const distance = Math.sqrt(
+          shadeLab.reduce(
+            (total, channel, index) => total + (channel - photoLab[index]) ** 2,
+            0
+          )
+        );
+        return { shade, distance };
+      })
+      .sort((first, second) => first.distance - second.distance);
+
+    familyShades.forEach(({ shade }) => {
+      if (!matchingShades.some((matchedShade) => matchedShade.name === shade.name)) {
+        matchingShades.push(shade);
+      }
+    });
+  });
+
+  return matchingShades.length ? matchingShades : shades;
+}
 
 function createInitialQuoteDetails() {
   const today = new Date();
@@ -157,11 +395,14 @@ const previousSectionRef = useRef(initialSection);
 const [uploadedImage, setUploadedImage] = useState("");
 const [imageName, setImageName] = useState("");
 const [imagePixels, setImagePixels] = useState(null);
+const [photoDominantColours, setPhotoDominantColours] = useState([]);
 const [autoColorMasks, setAutoColorMasks] = useState(null);
 const [isColorizing, setIsColorizing] = useState(false);
 const [designError, setDesignError] = useState("");
 const [designNotice, setDesignNotice] = useState("");
-const [activeSurface, setActiveSurface] = useState("walls");
+const [designMode, setDesignMode] = useState("unpainted");
+const [selectedDesignBrand, setSelectedDesignBrand] = useState("asianPaints");
+const [selectedDesignShade, setSelectedDesignShade] = useState(null);
 const [surfaceColours, setSurfaceColours] = useState({
   walls: "#C8D5C0",
   borders: "#F4EBDD",
@@ -194,7 +435,6 @@ const [attendanceDirty, setAttendanceDirty] = useState(false);
 const [attendanceLoadAttempt, setAttendanceLoadAttempt] = useState(0);
 const [attendanceSaveAttempt, setAttendanceSaveAttempt] = useState(0);
 const attendanceSaveQueueRef = useRef(Promise.resolve());
-const selectedSurfaceColour = surfaceColours[activeSurface];
 useEffect(() => {
   skipProjectExitSaveRef.current = false;
 }, [projectId]);
@@ -204,15 +444,6 @@ useEffect(() => {
   }
   previousSectionRef.current = initialSection;
 }, [initialSection]);
-
-const measurementStatusMessages = {
-  loading: "Loading saved measurements from SQLite…",
-  ready: "Measurements are loaded. Changes save to SQLite automatically.",
-  saving: "Saving measurements to SQLite…",
-  saved: "Measurements saved to SQLite.",
-  "load-error": "Could not load measurements from SQLite.",
-  "save-error": "Could not save measurements to SQLite.",
-};
 
   const [paintPrice, setPaintPrice] = useState(250);
   const [materialCost, setMaterialCost] = useState(500);
@@ -267,7 +498,12 @@ const measurementStatusMessages = {
   }, [attendanceWeekStart, attendanceLoadedWeek, attendanceLabourers]);
 
   const totalWallArea = walls.reduce((total, wall) => {
-    return total + Number(wall.length || 0) * Number(wall.height || 0);
+    return (
+      total +
+      Number(wall.length || 0) *
+        Number(wall.height || 0) *
+        WALLS_PER_ROOM
+    );
   }, 0);
 
   const totalOpeningArea = openings.reduce((total, opening) => {
@@ -822,56 +1058,46 @@ const measurementStatusMessages = {
 
   function renderMeasurementSyncStatus() {
     const hasError = measurementStoreStatus.endsWith("error");
+    if (!hasError) return null;
+
     return (
       <p
         className={`measurement-persistence-status is-${measurementStoreStatus}`}
-        role={hasError ? "alert" : "status"}
+        role="alert"
       >
-        {measurementStatusMessages[measurementStoreStatus]}
-        {hasError && (
-          <>
-            {" "}
-            <button
-              type="button"
-              className="measurement-retry-button"
-              onClick={onRetryMeasurementSync}
-            >
-              Retry
-            </button>
-          </>
-        )}
+        {measurementStoreStatus === "load-error"
+          ? "Could not load measurements."
+          : "Could not save measurements."}{" "}
+        <button
+          type="button"
+          className="measurement-retry-button"
+          onClick={onRetryMeasurementSync}
+        >
+          Retry
+        </button>
       </p>
     );
   }
 
   function renderProjectDataSyncStatus() {
     const hasError = projectDataStatus.endsWith("error");
-    const messages = {
-      loading: "Loading this house’s saved app data from SQLite…",
-      ready: "Saved app data is loaded. Changes save automatically to SQLite.",
-      saving: "Saving this house’s app data to SQLite…",
-      saved: "This house’s app data is saved to SQLite.",
-      error: "Could not load this house’s app data from SQLite.",
-      "save-error": "Could not save this house’s app data to SQLite.",
-    };
+    if (!hasError) return null;
+
     return (
       <p
         className={`measurement-persistence-status is-${projectDataStatus}`}
-        role={hasError ? "alert" : "status"}
+        role="alert"
       >
-        {messages[projectDataStatus]}
-        {hasError && (
-          <>
-            {" "}
-            <button
-              type="button"
-              className="measurement-retry-button"
-              onClick={retryProjectDataSync}
-            >
-              Retry
-            </button>
-          </>
-        )}
+        {projectDataStatus === "save-error"
+          ? "Could not save this house’s data."
+          : "Could not load this house’s data."}{" "}
+        <button
+          type="button"
+          className="measurement-retry-button"
+          onClick={retryProjectDataSync}
+        >
+          Retry
+        </button>
       </p>
     );
   }
@@ -906,11 +1132,13 @@ const measurementStatusMessages = {
         return;
       }
       context.drawImage(image, 0, 0, width, height);
+      const pixels = context.getImageData(0, 0, width, height).data;
       setImagePixels({
         width,
         height,
-        pixels: context.getImageData(0, 0, width, height).data,
+        pixels,
       });
+      setPhotoDominantColours(getPhotoDominantColours({ width, height, pixels }));
       setDesignError("");
     };
     image.onerror = () => {
@@ -968,6 +1196,7 @@ const measurementStatusMessages = {
       setUploadedImage(reader.result);
       setImageName(file.name);
       setImagePixels(null);
+      setPhotoDominantColours([]);
       setAutoColorMasks(null);
       setIsColorizing(false);
       setDesignError("");
@@ -985,6 +1214,7 @@ const measurementStatusMessages = {
     setUploadedImage("");
     setImageName("");
     setImagePixels(null);
+    setPhotoDominantColours([]);
     setAutoColorMasks(null);
     setIsColorizing(false);
     setDesignError("");
@@ -992,10 +1222,10 @@ const measurementStatusMessages = {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  async function applyColourPreset(preset) {
-    setSurfaceColours(preset.colors);
+  async function applySurfaceColours(colors, label) {
+    setSurfaceColours(colors);
     if (!imagePixels || !originalCanvasRef.current) {
-      setDesignNotice(`${preset.name} palette selected.`);
+      setDesignNotice(`${label} colours selected.`);
       return;
     }
     const generation = imageGenerationRef.current;
@@ -1003,7 +1233,7 @@ const measurementStatusMessages = {
     setDesignError("");
     setDesignNotice(
       autoColorMasks
-        ? `Applying ${preset.name} colours to detected areas…`
+        ? `Applying ${label} colours to detected areas…`
         : "Loading the on-device detection model and identifying house areas…"
     );
     try {
@@ -1012,7 +1242,7 @@ const measurementStatusMessages = {
       if (generation !== imageGenerationRef.current) return;
       setAutoColorMasks(masks);
       setDesignNotice(
-        `${preset.name} colours applied to detected house areas. Review the preview; borders and gates may be approximate.`
+        `${label} colours applied to detected house areas. Review the preview; borders and gates may be approximate.`
       );
     } catch (error) {
       if (generation !== imageGenerationRef.current) return;
@@ -1027,6 +1257,29 @@ const measurementStatusMessages = {
         setIsColorizing(false);
       }
     }
+  }
+
+  async function applyColourPreset(preset) {
+    await applySurfaceColours(preset.colors, preset.name);
+  }
+
+  function handleSurfaceColourChange(surface, color) {
+    setSelectedDesignShade(null);
+    void applySurfaceColours(
+      { ...surfaceColours, [surface]: color },
+      designSurfaceLabels[surface]
+    );
+  }
+
+  function applyBrandShade(brandKey, shade) {
+    setSelectedDesignShade({
+      brand: designPaintBrands[brandKey].name,
+      ...shade,
+    });
+    void applySurfaceColours(
+      { ...surfaceColours, walls: shade.color },
+      `${designPaintBrands[brandKey].name} ${shade.name}`
+    );
   }
 
   function downloadPhotoPreview() {
@@ -1179,6 +1432,7 @@ const measurementStatusMessages = {
             Paint<span className="home-brand-highlight">Wise</span>
             <small>Measure · Estimate · Transform</small>
           </span>
+          <PainterMascot />
         </a>
 
         
@@ -1277,7 +1531,6 @@ const measurementStatusMessages = {
         
 {initialSection === "home" && (
   <>
-    {projectDashboard}
     <section className="modern-hero" id="home">
       <div className="hero-content">
         <span className="hero-tag">
@@ -1336,14 +1589,6 @@ const measurementStatusMessages = {
           alt="Beautiful modern living room with elegant wall colours"
           className="hero-image"
         />
-
-        <div className="floating-card">
-          <div className="floating-icon">✦</div>
-          <div>
-            <strong>Your Space, Your Style</strong>
-            <p>Designed with care.</p>
-          </div>
-        </div>
 
         <div className="colour-card">
           <span>INSPIRED COLOURS</span>
@@ -1452,20 +1697,23 @@ const measurementStatusMessages = {
 
           <div className="home-calculator">
             <div className="calculator-heading">
-              <h3>Wall Measurements</h3>
-              <span>All dimensions in feet</span>
+              <h3>Room Measurements</h3>
+              <span>
+                All dimensions in feet · each room assumes {WALLS_PER_ROOM} walls
+                with the entered length and height
+              </span>
             </div>
 
             {walls.map((wall) => (
               <div className="measurement-row" key={wall.id}>
                 <label>
-                  Wall name
+                  Room name
                   <input
                     value={wall.name}
                     onChange={(e) =>
                       updateWall(wall.id, "name", e.target.value)
                     }
-                    placeholder="Wall name"
+                    placeholder="Room name"
                   />
                 </label>
                 <label>
@@ -1503,7 +1751,7 @@ const measurementStatusMessages = {
             ))}
 
             <button className="secondary-button" onClick={addWall}>
-              + Add Another Wall
+              + Add Another Room
             </button>
 
             <div className="calculator-heading opening-heading">
@@ -1577,7 +1825,7 @@ const measurementStatusMessages = {
 
             <div className="result-grid">
               <div className="result-card">
-                <span>Total Wall Area</span>
+                <span>Total Wall Area ({WALLS_PER_ROOM} walls per room)</span>
                 <strong>{totalWallArea.toFixed(2)} sq ft</strong>
               </div>
               <div className="result-card">
@@ -1984,49 +2232,31 @@ const measurementStatusMessages = {
                 </div>
               </div>
 
-              <p
-                className={`measurement-persistence-status is-${attendanceStoreStatus}`}
-                role={attendanceStoreStatus.endsWith("error") ? "alert" : "status"}
-              >
-                {attendanceStoreStatus === "loading" &&
-                  "Loading this week’s attendance…"}
-                {attendanceStoreStatus === "ready" &&
-                  "This week is ready. Attendance saves automatically to SQLite."}
-                {attendanceStoreStatus === "saving" &&
-                  "Saving weekly attendance to SQLite…"}
-                {attendanceStoreStatus === "saved" &&
-                  "Weekly attendance saved to SQLite."}
-                {attendanceStoreStatus === "load-error" && (
-                  <>
-                    Could not load attendance from SQLite.{" "}
-                    <button
-                      type="button"
-                      className="measurement-retry-button"
-                      onClick={() => {
+              {attendanceStoreStatus.endsWith("error") && (
+                <p
+                  className={`measurement-persistence-status is-${attendanceStoreStatus}`}
+                  role="alert"
+                >
+                  {attendanceStoreStatus === "load-error"
+                    ? "Could not load attendance."
+                    : "Could not save attendance."}{" "}
+                  <button
+                    type="button"
+                    className="measurement-retry-button"
+                    onClick={() => {
+                      if (attendanceStoreStatus === "load-error") {
                         setAttendanceStoreStatus("loading");
                         setAttendanceLoadAttempt((attempt) => attempt + 1);
-                      }}
-                    >
-                      Retry
-                    </button>
-                  </>
-                )}
-                {attendanceStoreStatus === "save-error" && (
-                  <>
-                    Could not save attendance to SQLite.{" "}
-                    <button
-                      type="button"
-                      className="measurement-retry-button"
-                      onClick={() => {
+                      } else {
                         setAttendanceStoreStatus("ready");
                         setAttendanceSaveAttempt((attempt) => attempt + 1);
-                      }}
-                    >
-                      Retry
-                    </button>
-                  </>
-                )}
-              </p>
+                      }
+                    }}
+                  >
+                    Retry
+                  </button>
+                </p>
+              )}
 
               <div className="attendance-summary">
                 <div className="attendance-summary-card">
@@ -2267,169 +2497,12 @@ const measurementStatusMessages = {
           </Suspense>
         )}
 {initialSection === "painting-design" && (
-  <section className="home-tools" id="painting-design">
-    <div className="home-section-heading">
-      <h2>Exterior Painting Design</h2>
-      <p>
-        Choose a colour combination to automatically apply its colours to detected
-        house areas. Photos are processed only in this browser.
-      </p>
-    </div>
-
-    <div className="home-calculator design-editor">
-      <div className="design-upload-row">
-        <div>
-          <h3>{imageName || "Upload an exterior photo"}</h3>
-          <p>JPG, PNG, or WEBP. Your photo stays on this device.</p>
-        </div>
-        <div className="design-action-row">
-          <input
-            ref={fileInputRef}
-            className="design-file-input"
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-            onChange={handlePhotoUpload}
-          />
-          <button
-            className="home-primary-button"
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {uploadedImage ? "Replace photo" : "Upload photo"}
-          </button>
-          {uploadedImage && (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={removeDesignPhoto}
-            >
-              Remove photo
-            </button>
-          )}
-        </div>
-      </div>
-      <p className="calculator-note design-privacy-note">
-        Photos stay on this device. The AI model downloads in your browser the first
-        time you apply a palette; your photo is not uploaded.
-      </p>
-
-      {designError && <p className="quotation-error" role="alert">{designError}</p>}
-      {designNotice && <p className="design-status" role="status">{designNotice}</p>}
-
-      {uploadedImage && imagePixels ? (
-        <div className="design-editor-layout">
-          <aside className="design-controls">
-            <div className="design-control-section">
-              <h3>Colour combinations</h3>
-              <p className="calculator-note">
-                Selecting a combination detects house areas and applies each matching
-                colour automatically.
-              </p>
-              <div className="design-preset-list">
-                {designColourPresets.map((preset) => (
-                  <button
-                    className="design-preset-button"
-                    key={preset.name}
-                    type="button"
-                    disabled={isColorizing}
-                    onClick={() => applyColourPreset(preset)}
-                  >
-                    <span className="design-preset-swatches">
-                      {Object.values(preset.colors).map((color) => (
-                        <i key={color} style={{ backgroundColor: color }} />
-                      ))}
-                    </span>
-                    {preset.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="design-control-section">
-              <h3>Palette colour</h3>
-              <label>
-                Area type
-                <select
-                  value={activeSurface}
-                  onChange={(event) => setActiveSurface(event.target.value)}
-                >
-                  {Object.entries(designSurfaceLabels).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="design-color-picker-row">
-                <input
-                  type="color"
-                  aria-label={`${designSurfaceLabels[activeSurface]} colour`}
-                  value={selectedSurfaceColour}
-                  disabled={isColorizing}
-                  onChange={(event) =>
-                    setSurfaceColours((current) => ({
-                      ...current,
-                      [activeSurface]: event.target.value,
-                    }))
-                  }
-                />
-                <strong>{selectedSurfaceColour.toUpperCase()}</strong>
-              </div>
-              <p className="calculator-note">
-                After detection, changing a colour here updates that area in the preview.
-              </p>
-            </div>
-          </aside>
-
-          <div className="design-canvas-area">
-            <p className="design-canvas-instructions">
-              {isColorizing
-                ? "Detecting and recolouring house areas…"
-                : autoColorMasks
-                  ? "Review the automatically recoloured photo."
-                  : "Choose a colour combination to start automatic area detection."}
-            </p>
-            <div className="design-comparison">
-              <div className="design-image-card">
-                <h3>Before</h3>
-                <div className="design-image-frame">
-                  <canvas ref={originalCanvasRef} aria-label="Original exterior photo" />
-                </div>
-              </div>
-              <div className="design-image-card">
-                <h3>After</h3>
-                <div className="design-image-frame">
-                  <canvas ref={paintedCanvasRef} aria-label="Automatically recoloured house preview" />
-                </div>
-              </div>
-            </div>
-            <div className="design-export-row">
-              <button
-                className="home-primary-button"
-                type="button"
-                disabled={!autoColorMasks || isColorizing}
-                onClick={downloadPhotoPreview}
-              >
-                Download Painted Preview
-              </button>
-              <span>Downloads the colour preview as a PNG file.</span>
-            </div>
-            <p className="calculator-note design-ai-note">
-              AI detection is approximate: borders are inferred from wall edges,
-              gates from fence/railing labels, and roofs may be included when the
-              model detects only a whole building.
-            </p>
-          </div>
-        </div>
-      ) : uploadedImage ? (
-        <p className="calculator-note">Loading local photo preview…</p>
-      ) : (
-        <div className="design-empty-state">
-          <strong>Start with a clear exterior photo</strong>
-          <p>Upload a photo to automatically detect house areas and apply a colour combination.</p>
-        </div>
-      )}
-    </div>
-  </section>
+  <PaintingDesign />
 )}
+
+        {initialSection==="home"&&(
+        projectDashboard
+        )}
 
         {initialSection==="home"&&(
         <section className="home-about" id="about">

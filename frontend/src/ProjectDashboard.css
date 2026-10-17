@@ -1,6 +1,22 @@
 .project-dashboard {
-  padding-top: 42px;
   background: #f8f5ef;
+}
+
+.project-dashboard.home-tools {
+  padding-top: 28px;
+  padding-bottom: 36px;
+}
+
+.project-dashboard .home-section-heading {
+  margin-bottom: 16px;
+}
+
+.project-dashboard .home-section-heading h2 {
+  margin: 6px 0;
+}
+
+.project-dashboard .home-section-heading p {
+  margin: 0;
 }
 
 .project-dashboard-toolbar,
@@ -16,8 +32,8 @@
 }
 
 .project-dashboard-toolbar {
-  margin: 24px 0 16px;
-  padding: 18px;
+  margin: 16px 0 12px;
+  padding: 14px;
   border: 1px solid #e4e9e0;
   border-radius: 14px;
   background: #fff;
@@ -112,14 +128,14 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  margin: 16px 0;
+  margin: 12px 0;
 }
 
 .project-summary-grid article {
   display: grid;
   gap: 8px;
-  min-height: 90px;
-  padding: 16px;
+  min-height: 78px;
+  padding: 13px;
   border: 1px solid #e5e9e2;
   border-radius: 12px;
   background: #fff;
@@ -138,7 +154,7 @@
 .project-current-card,
 .overall-summary-panel,
 .project-finance-card {
-  padding: 20px;
+  padding: 16px;
   border: 1px solid #e5e9e2;
   border-radius: 14px;
   background: #fff;
@@ -146,11 +162,11 @@
 
 .project-current-card {
   align-items: center;
-  margin: 16px 0 30px;
+  margin: 12px 0 22px;
 }
 
 .project-current-card h3 {
-  margin: 10px 0 6px;
+  margin: 7px 0 4px;
   color: #244c3a;
   font-size: 22px;
 }
@@ -187,12 +203,12 @@
 }
 
 .overall-summary-panel {
-  margin: -14px 0 32px;
+  margin: -8px 0 24px;
 }
 
 .overall-summary-panel h3,
 .project-finance-card h3 {
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   color: #244c3a;
 }
 
@@ -220,8 +236,11 @@
 }
 
 .project-section-heading {
-  align-items: end;
-  margin: 28px 0 14px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin: 22px 0 12px;
+  text-align: center;
 }
 
 .project-section-heading h3 {
@@ -237,6 +256,7 @@
 }
 
 .project-filters {
+  justify-content: center;
   align-items: end;
 }
 
@@ -247,13 +267,13 @@
 .project-list-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .project-list-item {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 6px;
 }
 
 .project-list-card {
@@ -261,8 +281,8 @@
   display: grid;
   justify-items: start;
   gap: 8px;
-  min-height: 310px;
-  padding: 16px;
+  min-height: 0;
+  padding: 13px;
   border: 1px solid #e1e7df;
   border-radius: 12px;
   background: #fff;
@@ -273,7 +293,7 @@
 }
 
 .project-list-card.without-house-photo {
-  min-height: 220px;
+  min-height: 0;
 }
 
 .project-list-card:hover,

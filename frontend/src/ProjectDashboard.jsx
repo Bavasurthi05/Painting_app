@@ -177,7 +177,7 @@ function ProjectDashboard({
     <section className="project-dashboard home-tools" id="projects">
       <div className="home-section-heading">
         <span>PAINTER PROJECT MANAGEMENT</span>
-        <h2>House projects</h2>
+        <h2>{showHouseImages ? "House Painting Projects" : "House projects"}</h2>
         <p>Keep every customer’s measurements, reports, attendance, and finances in a separate workspace.</p>
       </div>
 
@@ -200,18 +200,14 @@ function ProjectDashboard({
       {(projectActionError || actionError) && (
         <p className="project-error" role="alert">{actionError || projectActionError}</p>
       )}
-      <p className={`project-sync-status is-${projectDataStatus}`} role={projectDataStatus.includes("error") ? "alert" : "status"}>
-        {projectDataStatus === "loading" && "Loading saved details for this house…"}
-        {projectDataStatus === "ready" && "House details are ready. Changes save automatically."}
-        {projectDataStatus === "saving" && "Saving this house’s details…"}
-        {projectDataStatus === "saved" && "House details saved."}
-        {(projectDataStatus === "error" || projectDataStatus === "save-error") && (
-          <>
-            Could not sync this house’s details.{" "}
-            <button type="button" onClick={onRetryProjectData}>Retry</button>
-          </>
-        )}
-      </p>
+      {(projectDataStatus === "error" || projectDataStatus === "save-error") && (
+        <p className={`project-sync-status is-${projectDataStatus}`} role="alert">
+          {projectDataStatus === "save-error"
+            ? "Could not save this house’s details."
+            : "Could not load this house’s details."}{" "}
+          <button type="button" onClick={onRetryProjectData}>Retry</button>
+        </p>
+      )}
 
       {showFinancials && (
         <div className="project-summary-grid">
@@ -271,7 +267,6 @@ function ProjectDashboard({
       )}
 
       <div className="project-section-heading">
-        <div><h3>All houses</h3><p>Completed projects stay here as history.</p></div>
         <div className="project-filters">
           <label>Search houses<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Customer, location, deadline…" /></label>
           <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>All statuses</option>{PROJECT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>

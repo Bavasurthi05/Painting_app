@@ -7,8 +7,36 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from flask import Flask, jsonify, request
+from flask import Flask, app, jsonify, request
+from werkzeug.exceptions import RequestEntityTooLarge
 from flask_cors import CORS
+
+import os
+import base64
+from io import BytesIO
+
+from dotenv import load_dotenv
+from PIL import Image
+from google import genai
+
+from paint_color_analysis import (
+    BERGER_DATASET_PATH,
+    BergerDatasetError,
+    analyze_house_image,
+    get_paint_shade_catalogue,
+)
+
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+gemini_client = (
+    genai.Client(api_key=GEMINI_API_KEY)
+    if GEMINI_API_KEY
+    else None
+)
+
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 DEFAULT_DATABASE_PATH = Path(__file__).resolve().parent / "paintwise.sqlite3"
 VALID_PAINT_PRODUCTS = {
@@ -251,12 +279,20 @@ def _connect(database_path: str) -> Iterator[sqlite3.Connection]:
 
 def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     app = Flask(__name__)
+
     app.config.from_mapping(
         DATABASE=str(DEFAULT_DATABASE_PATH),
-        MAX_CONTENT_LENGTH=1_048_576,
+        MAX_CONTENT_LENGTH=12 * 1024 * 1024,  # 12 MB
+        BERGER_SHADE_DATASET=str(BERGER_DATASET_PATH),
     )
+
     if test_config:
         app.config.update(test_config)
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_request_too_large(_: RequestEntityTooLarge) -> tuple[Any, int]:
+        return jsonify({"error": "Upload must be smaller than 10 MB."}), 413
+
     CORS(
         app,
         resources={
@@ -327,6 +363,92 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
     @app.get("/api/health")
     def health() -> tuple[Any, int]:
         return jsonify({"status": "ok"}), 200
+
+    @app.get("/api/paint-shades/<brand>")
+    def paint_shade_catalogue(brand: str) -> tuple[Any, int]:
+        normalized_brand = brand.strip().lower()
+        if normalized_brand not in {"berger", "asian", "nerolac", "dulux"}:
+            return jsonify({"error": "Unsupported paint brand."}), 400
+        try:
+            catalogue = get_paint_shade_catalogue(
+                normalized_brand,
+                Path(app.config["BERGER_SHADE_DATASET"]),
+            )
+        except BergerDatasetError:
+            app.logger.exception("Configured Berger shade dataset is invalid")
+            return jsonify({"error": "The configured Berger shade dataset is invalid."}), 500
+        return jsonify(catalogue), 200
+
+    @app.post("/api/paint-colour-analysis")
+    def analyze_painted_house() -> tuple[Any, int]:
+        uploaded_file = request.files.get("image")
+        if uploaded_file is None:
+            return jsonify({"error": "Please upload a house photo."}), 400
+        if uploaded_file.mimetype not in {
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+        }:
+            return jsonify({"error": "Upload a JPEG, PNG, or WebP house image."}), 400
+
+        image_bytes = uploaded_file.stream.read(10 * 1024 * 1024 + 1)
+        if not image_bytes:
+            return jsonify({"error": "The uploaded image is empty."}), 400
+        if len(image_bytes) > 10 * 1024 * 1024:
+            return jsonify({"error": "Image must be smaller than 10 MB."}), 413
+
+        mask_file = request.files.get("house_mask")
+        if mask_file is None or mask_file.mimetype != "image/png":
+            return jsonify(
+                {"error": "A PNG house segmentation mask is required for colour analysis."}
+            ), 400
+        house_mask_bytes = mask_file.stream.read(2 * 1024 * 1024 + 1)
+        if not house_mask_bytes:
+            return jsonify({"error": "House segmentation mask is empty."}), 400
+        if len(house_mask_bytes) > 2 * 1024 * 1024:
+            return jsonify({"error": "House segmentation mask must be smaller than 2 MB."}), 413
+
+        brand = request.form.get("brand", "")
+        supported_brands = {"berger", "asian", "nerolac", "dulux"}
+        if brand not in supported_brands:
+            return jsonify({"error": "Choose a supported paint brand."}), 400
+
+        try:
+            shade_dataset = (
+                Path(app.config["BERGER_SHADE_DATASET"])
+                if brand == "berger"
+                else None
+            )
+            result = analyze_house_image(
+                image_bytes,
+                shade_dataset,
+                house_mask_bytes,
+            )
+            result["selected_brand"] = brand
+            result["brand_catalogue_available"] = (
+                brand == "berger" and result["berger_dataset_available"]
+            )
+            for region in result["regions"]:
+                region["brand_match"] = (
+                    region["berger_match"] if brand == "berger" else None
+                )
+            result["brand_match_message"] = (
+                None
+                if result["brand_catalogue_available"]
+                else f"No verified {brand.title()} shade catalogue is configured; shade matches are unavailable."
+            )
+        except BergerDatasetError:
+            app.logger.exception("Configured Berger shade dataset is invalid")
+            return jsonify({"error": "The configured Berger shade dataset is invalid."}), 500
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except (OSError, Image.DecompressionBombError):
+            return jsonify({"error": "The uploaded file is not a safe, readable image."}), 400
+        except Exception:
+            app.logger.exception("Painted-house colour analysis failed")
+            return jsonify({"error": "Colour analysis failed. Check the Flask server logs."}), 500
+
+        return jsonify(result), 200
 
     @app.get("/api/projects/<workspace_id>")
     def list_projects(workspace_id: str) -> tuple[Any, int]:
@@ -763,6 +885,190 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 (normalized_project_id, week_start, serialized_attendance),
             )
         return jsonify({"saved": True}), 200
+    
+    
+    
+    @app.post("/api/home-design/preview")
+    def generate_home_design_preview():
+        import requests
+        import base64
+
+        api_key = os.getenv("STABILITY_API_KEY")
+
+        if not api_key:
+            return jsonify({
+                "error": "Stability AI API key is missing"
+            }), 500
+
+        uploaded_file = request.files.get("image")
+
+        if not uploaded_file:
+            return jsonify({
+                "error": "Please upload a house photo"
+            }), 400
+
+        wall_color = request.form.get(
+            "wall_color", "#E8D7B5"
+        )
+        trim_color = request.form.get(
+            "trim_color", "#79513A"
+        )
+        wall_color_name = request.form.get(
+            "wall_color_name", "specified wall color"
+        ).strip()
+        trim_color_name = request.form.get(
+            "trim_color_name", "specified trim color"
+        ).strip()
+
+        if any(
+            not name
+            or len(name) > 40
+            or not all(character.isalpha() or character in " -" for character in name)
+            for name in (wall_color_name, trim_color_name)
+        ):
+            return jsonify({
+                "error": "Color names must contain only letters, spaces, or hyphens"
+            }), 400
+
+        try:
+            image_bytes = uploaded_file.read()
+
+            if (
+                not image_bytes
+                or len(image_bytes) > 10 * 1024 * 1024
+            ):
+                return jsonify({
+                    "error": "Image must be under 10 MB"
+                }), 400
+
+            # Validate and resize the original photo.
+            with Image.open(BytesIO(image_bytes)) as original:
+                original = original.convert("RGB")
+                original.thumbnail(
+                    (1024, 768),
+                    Image.Resampling.LANCZOS
+                )
+
+                canvas = Image.new("RGB", (1024, 768), (255, 255, 255))
+
+                original.thumbnail((1024, 768), Image.Resampling.LANCZOS)
+
+                x = (1024 - original.width) // 2
+                y = (768 - original.height) // 2
+
+                canvas.paste(original, (x, y))
+
+                buffer = BytesIO()
+                canvas.save(buffer, format="PNG")
+                image_bytes = buffer.getvalue()
+
+            prompt = f"""
+IMAGE EDITING TASK — REPAINT THE EXISTING HOUSE PHOTO.
+
+Use the uploaded photograph as the exact base image.
+This is a paint-color visualization, NOT a house redesign.
+
+WALL COLOR: {wall_color_name} ({wall_color})
+TRIM COLOR: {trim_color_name} ({trim_color})
+
+Repaint the exterior walls in the named wall color. The color name and
+hex code are both required: match the hue and saturation rather than
+using the hex value as a subtle tint. Paint must look visibly pink,
+purple, green, blue, yellow, or brown as named, not white, cream, gray,
+or pale pastel. Keep the wall and trim colors distinct and preserve
+natural shadows and lighting without washing out the colors.
+
+Apply the wall color uniformly to ALL visible exterior painted
+wall surfaces, including upper walls, side walls, and the
+recessed entrance walls.
+
+Apply the trim color to existing painted borders, columns,
+fascia, exterior bands, and other trim surfaces.
+
+STRICT REQUIREMENTS:
+- Preserve the exact original photograph and camera angle.
+- Keep every wall, window, door, roof, column, and step
+  in its original position, shape, and size.
+- Preserve the original background, trees, ground, and shadows.
+- Do not create a new house or add architectural features.
+- Do not change the image composition or crop the house.
+- Do not leave large exterior wall sections unpainted.
+- Show a realistic paint finish with natural lighting.
+- Make the new paint colors clearly visible and match the specified
+  names and hex codes; do not render white or near-white walls.
+- Only change the paint colors of existing exterior surfaces.
+"""
+
+            response = requests.post(
+    "https://api.stability.ai/v1/generation/"
+    "stable-diffusion-xl-1024-v1-0/image-to-image",
+
+    headers={
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+    },
+
+    files={
+        "init_image": (
+            "house.png",
+            image_bytes,
+            "image/png",
+        )
+    },
+
+    data={
+        "text_prompts[0][text]": prompt,
+        "text_prompts[0][weight]": 1,
+        "text_prompts[1][text]": (
+            "changed architecture, distorted windows, "
+            "changed roof, blurry, unrealistic, washed-out colors, "
+            "desaturated paint, pale pastel walls, white walls"
+        ),
+        "text_prompts[1][weight]": -1,
+        "init_image_mode": "IMAGE_STRENGTH",
+        "image_strength": 0.45,
+        "cfg_scale": 8,
+        "steps": 30,
+        "samples": 1,
+    },
+
+    timeout=180,
+)
+
+            if not response.ok:
+                app.logger.error(
+                    "Stability AI error %s: %s",
+                    response.status_code,
+                    response.text[:1000],
+                )
+                return jsonify({
+                    "error": "Stability AI request failed",
+                    "details": response.text[:500],
+                }), 502
+
+            result = response.json()
+            artifacts = result.get("artifacts", [])
+
+            if not artifacts or not artifacts[0].get("base64"):
+                return jsonify({
+                    "error": "Stability AI returned no image"
+                }), 502
+
+            image_base64 = artifacts[0]["base64"]
+
+            return jsonify({
+                "image": (
+                    f"data:image/png;base64,{image_base64}"
+                )
+            }), 200
+
+        except Exception:
+            app.logger.exception(
+                "Stability AI home-design preview failed"
+            )
+            return jsonify({
+                "error": "Image preview failed. Check Flask terminal."
+            }), 500
 
     return app
 

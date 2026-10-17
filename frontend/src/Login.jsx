@@ -1,6 +1,7 @@
 
 import { useState } from "react";
 import "./App.css";
+import PainterMascot from "./PainterMascot";
 
 function Login({ onSignupClick, onLoginSuccess}) {
   const [email, setEmail] = useState("");
@@ -58,6 +59,7 @@ function Login({ onSignupClick, onLoginSuccess}) {
               Measure · Estimate · Transform
             </p>
           </div>
+          <PainterMascot />
         </div>
 
         <div className="welcome">

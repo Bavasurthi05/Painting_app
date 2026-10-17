@@ -18,6 +18,15 @@ async function getSegmenter() {
   }
 }
 
+async function segmentCanvas(canvas) {
+  const segmenter = await getSegmenter();
+  const { RawImage } = await import("@huggingface/transformers");
+  const image = RawImage.fromCanvas(canvas);
+  return segmenter(image, {
+    target_sizes: [[image.height, image.width]],
+  });
+}
+
 function addMask(target, source, sourceWidth, sourceHeight, width, height) {
   for (let y = 0; y < height; y += 1) {
     const sourceY = Math.min(
@@ -34,6 +43,40 @@ function addMask(target, source, sourceWidth, sourceHeight, width, height) {
       }
     }
   }
+}
+
+export async function detectPaintedHouseMask(canvas) {
+  const detections = await segmentCanvas(canvas);
+  const { width, height } = canvas;
+  const mask = new Uint8Array(width * height);
+  const buildingLabels = new Set([
+    "building",
+    "house",
+    "wall",
+    "roof",
+    "column",
+    "skyscraper",
+  ]);
+
+  detections.forEach(({ label, mask: detectionMask }) => {
+    if (!buildingLabels.has(label?.trim().toLowerCase())) return;
+    addMask(
+      mask,
+      detectionMask.data,
+      detectionMask.width,
+      detectionMask.height,
+      width,
+      height
+    );
+  });
+
+  if (!mask.some((pixel) => pixel > 0)) {
+    throw new Error(
+      "Could not identify the house in this photo. Try a clearer, front-facing house image."
+    );
+  }
+
+  return mask;
 }
 
 function createBorderMask(wallMask, width, height) {
@@ -56,12 +99,7 @@ function createBorderMask(wallMask, width, height) {
 }
 
 export async function detectExteriorSurfaces(canvas) {
-  const segmenter = await getSegmenter();
-  const { RawImage } = await import("@huggingface/transformers");
-  const image = RawImage.fromCanvas(canvas);
-  const detections = await segmenter(image, {
-    target_sizes: [[image.height, image.width]],
-  });
+  const detections = await segmentCanvas(canvas);
   const { width, height } = canvas;
   const masks = {
     walls: new Uint8Array(width * height),
@@ -121,7 +159,12 @@ export async function detectExteriorSurfaces(canvas) {
   return masks;
 }
 
-export function applyExteriorColours(imagePixels, masks, colours) {
+export function applyExteriorColours(
+  imagePixels,
+  masks,
+  colours,
+  opacity = 0.58
+) {
   const { width, height, pixels } = imagePixels;
   const output = new Uint8ClampedArray(pixels);
   const surfaces = ["walls", "borders", "windows", "doors", "gates"];
@@ -138,12 +181,15 @@ export function applyExteriorColours(imagePixels, masks, colours) {
     for (let pixel = 0; pixel < width * height; pixel += 1) {
       if (!mask[pixel]) continue;
       const offset = pixel * 4;
-      const opacity = 0.58 * (mask[pixel] / 255);
-      output[offset] = pixels[offset] * (1 - opacity) + tint[0] * opacity;
+      const pixelOpacity = opacity * (mask[pixel] / 255);
+      output[offset] =
+        pixels[offset] * (1 - pixelOpacity) + tint[0] * pixelOpacity;
       output[offset + 1] =
-        pixels[offset + 1] * (1 - opacity) + tint[1] * opacity;
+        pixels[offset + 1] * (1 - pixelOpacity) +
+        tint[1] * pixelOpacity;
       output[offset + 2] =
-        pixels[offset + 2] * (1 - opacity) + tint[2] * opacity;
+        pixels[offset + 2] * (1 - pixelOpacity) +
+        tint[2] * pixelOpacity;
     }
   });
 

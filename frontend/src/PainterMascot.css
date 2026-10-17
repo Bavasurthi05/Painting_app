@@ -1,0 +1,213 @@
+.painter-mascot {
+  display: inline-flex;
+  flex: 0 0 62px;
+  align-self: center;
+  width: 62px;
+  height: 82px;
+  margin-left: 2px;
+  animation: painter-bob 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.painter-mascot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.painter-mascot path {
+  fill: none;
+  stroke: #344c3d;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 5;
+}
+
+.painter-mascot circle:not(.mascot-eye) {
+  fill: #f2c5a0;
+  stroke: #344c3d;
+  stroke-width: 3;
+}
+
+.painter-mascot .mascot-arm {
+  stroke: #e98554;
+  stroke-width: 8;
+  filter: drop-shadow(0 0 0.6px #344c3d);
+}
+
+.painter-mascot .mascot-hand {
+  fill: #ffd166;
+  stroke: #344c3d;
+  stroke-width: 2.5;
+}
+
+.painter-mascot .mascot-leg {
+  stroke: #347f7a;
+  stroke-width: 9;
+  filter: drop-shadow(0 0 0.6px #344c3d);
+}
+
+.painter-mascot .mascot-shadow {
+  fill: #263d3024;
+  stroke: none;
+  transform-origin: center;
+  animation: painter-shadow 1.8s ease-in-out infinite;
+}
+
+.painter-mascot .mascot-back-arm,
+.painter-mascot .mascot-front-arm,
+.painter-mascot .mascot-left-leg,
+.painter-mascot .mascot-right-leg {
+  transform-box: view-box;
+}
+
+.painter-mascot .mascot-back-arm {
+  transform-origin: 42px 66px;
+  animation: painter-wave 0.8s ease-in-out infinite alternate;
+}
+
+.painter-mascot .mascot-front-arm {
+  transform-origin: 76px 66px;
+  animation: painter-wave-reverse 0.8s ease-in-out infinite alternate;
+}
+
+.painter-mascot .mascot-left-leg {
+  transform-origin: 49px 101px;
+  animation: painter-step 0.55s ease-in-out infinite alternate;
+}
+
+.painter-mascot .mascot-right-leg {
+  transform-origin: 68px 101px;
+  animation: painter-step-reverse 0.55s ease-in-out infinite alternate;
+}
+
+.painter-mascot .mascot-body {
+  fill: #78966e;
+  stroke: #344c3d;
+}
+
+.painter-mascot .mascot-apron {
+  fill: #e9c28d;
+  stroke-width: 3;
+}
+
+.painter-mascot .mascot-apron-pocket {
+  fill: #dca968;
+  stroke-width: 2;
+}
+
+.painter-mascot .mascot-neck,
+.painter-mascot .mascot-face {
+  fill: #f2c5a0;
+  stroke-width: 3;
+}
+
+.painter-mascot .mascot-hair {
+  fill: #5a3f31;
+  stroke: none;
+}
+
+.painter-mascot .mascot-hat {
+  fill: #f0a35e;
+  stroke-width: 3;
+}
+
+.painter-mascot .mascot-hat-brim {
+  fill: #f5f0e7;
+  stroke-width: 2.5;
+}
+
+.painter-mascot .mascot-eye {
+  fill: #344c3d;
+  stroke: none;
+}
+
+.painter-mascot .mascot-smile {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.painter-mascot .mascot-shoe {
+  fill: #f0a35e;
+  stroke: #344c3d;
+  stroke-width: 3;
+}
+
+.painter-mascot .mascot-paint {
+  fill: #e88768;
+  stroke: none;
+}
+
+@keyframes painter-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+
+  50% {
+    transform: translateY(-7px) rotate(3deg);
+  }
+}
+
+@keyframes painter-wave {
+  from {
+    transform: rotate(-12deg);
+  }
+
+  to {
+    transform: rotate(18deg);
+  }
+}
+
+@keyframes painter-wave-reverse {
+  from {
+    transform: rotate(15deg);
+  }
+
+  to {
+    transform: rotate(-12deg);
+  }
+}
+
+@keyframes painter-step {
+  from {
+    transform: rotate(-12deg);
+  }
+
+  to {
+    transform: rotate(12deg);
+  }
+}
+
+@keyframes painter-step-reverse {
+  from {
+    transform: rotate(12deg);
+  }
+
+  to {
+    transform: rotate(-12deg);
+  }
+}
+
+@keyframes painter-shadow {
+  0%,
+  100% {
+    transform: scaleX(1);
+  }
+
+  50% {
+    transform: scaleX(0.75);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .painter-mascot,
+  .painter-mascot .mascot-shadow,
+  .painter-mascot .mascot-back-arm,
+  .painter-mascot .mascot-front-arm,
+  .painter-mascot .mascot-left-leg,
+  .painter-mascot .mascot-right-leg {
+    animation: none;
+  }
+}

@@ -1,6 +1,7 @@
 
 import { useState } from "react";
 import "./Signup.css";
+import PainterMascot from "./PainterMascot";
 
 function Signup({ onLoginClick,onSignupSuccess }) {
   const [form, setForm] = useState({
@@ -86,6 +87,7 @@ if (!/^[^\s@]+\.[^\s@]+$/.test(form.email)) {
             <strong>Paint<span>Wise</span></strong>
             <small>Measure · Estimate · Transform</small>
           </span>
+          <PainterMascot />
         </a>
 
         <div className="signup-heading">

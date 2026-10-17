@@ -14,6 +14,10 @@ import {
   deleteProject,
 } from "./measurementApi";
 
+import AIChatWidget from "./components/AIChatWidget";
+
+
+
 const ACTIVE_PROJECT_KEY = "paintwise.activeHouseProjectId";
 
 function App() {
@@ -393,6 +397,14 @@ function App() {
         />
         )
       )}
+      <AIChatWidget
+  workspaceId={workspaceId}
+  activeProjectId={activeProjectId}
+  activeProject={projects.find(
+    (project) => project.id === activeProjectId
+  )}
+  projects={projects}
+/>
     </>
   );
 }

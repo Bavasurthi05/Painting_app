@@ -34,9 +34,7 @@ async function createQuotationPdf({
   measurementDetails,
   paintQuantity,
   paintCost,
-  labourCost,
   puttyCost,
-  primerCost,
   additionalExpenses,
   discount,
   total,
@@ -197,23 +195,9 @@ async function createQuotationPdf({
     ...(!isCompletionReport
       ? [
           {
-            description: "Labour charges",
-            detail: "As quoted",
-            amount: labourCost,
-          },
-        ]
-      : []),
-    ...(!isCompletionReport
-      ? [
-          {
             description: "Wall putty",
             detail: `${area.toFixed(2)} sq ft x ${formatPdfMoney(Number(quote.puttyRatePerSqFoot || 0))}/sq ft`,
             amount: puttyCost,
-          },
-          {
-            description: "Primer",
-            detail: `${area.toFixed(2)} sq ft x ${formatPdfMoney(Number(quote.primerRatePerSqFoot || 0))}/sq ft`,
-            amount: primerCost,
           },
           {
             description: "Additional expenses",
@@ -410,17 +394,10 @@ function QuotationReport({
       ? area * numericCostPerSquareFoot
       : paintQuantity * effectivePaintPrice
     : 0;
-  const labourCharge = isCompletionReport
-    ? Number(quote.actualLabourCost || 0)
-    : Number(quote.labourCharge || 0);
   const puttyRatePerSqFoot = Number(quote.puttyRatePerSqFoot || 0);
-  const primerRatePerSqFoot = Number(quote.primerRatePerSqFoot || 0);
   const puttyCost = isCompletionReport
     ? 0
     : area * puttyRatePerSqFoot;
-  const primerCost = isCompletionReport
-    ? 0
-    : area * primerRatePerSqFoot;
   const additionalExpenses = Number(
     isCompletionReport
       ? 0
@@ -431,8 +408,7 @@ function QuotationReport({
   );
   const subtotal =
     paintCost +
-    (isCompletionReport ? 0 : labourCharge) +
-    (isCompletionReport ? 0 : puttyCost + primerCost + additionalExpenses);
+    (isCompletionReport ? 0 : puttyCost + additionalExpenses);
   const total = Math.max(0, subtotal - discount);
   const costValues = [
     includePaintingOptions
@@ -440,9 +416,7 @@ function QuotationReport({
         ? numericCostPerSquareFoot
         : effectivePaintPrice
       : 0,
-    isCompletionReport ? 0 : labourCharge,
     puttyCost,
-    primerCost,
     additionalExpenses,
     discount,
   ];
@@ -497,11 +471,9 @@ function QuotationReport({
             `Paint: ${money(paintCost)}`,
           ]
       : []),
-    ...(!isCompletionReport ? [`Labour: ${money(labourCharge)}`] : []),
     ...(!isCompletionReport
       ? [
           `Putty: ${money(puttyCost)}`,
-          `Primer: ${money(primerCost)}`,
           `Additional expenses: ${money(additionalExpenses)}`,
         ]
       : []),
@@ -547,9 +519,7 @@ function QuotationReport({
         },
         paintQuantity,
         paintCost,
-        labourCost: labourCharge,
         puttyCost,
-        primerCost,
         additionalExpenses,
         discount,
         total,
@@ -577,19 +547,11 @@ function QuotationReport({
         ]
       : []),
     ...(!isCompletionReport
-      ? [{ label: "Labour charges", detail: "As quoted", amount: labourCharge }]
-      : []),
-    ...(!isCompletionReport
       ? [
           {
             label: "Wall putty",
             detail: `${area.toFixed(2)} sq ft x ${money(puttyRatePerSqFoot)}/sq ft`,
             amount: puttyCost,
-          },
-          {
-            label: "Primer",
-            detail: `${area.toFixed(2)} sq ft x ${money(primerRatePerSqFoot)}/sq ft`,
-            amount: primerCost,
           },
           {
             label: "Additional expenses",
@@ -821,21 +783,6 @@ function QuotationReport({
           <h3>Quotation costs</h3>
           <div className="quotation-form-grid">
             <label>
-              {isCompletionReport ? "Actual labour cost (₹) *" : "Labour charges (₹)"}
-              <input
-                type="number"
-                min="0"
-                value={isCompletionReport ? quote.actualLabourCost : quote.labourCharge}
-                placeholder="0"
-                onChange={(e) =>
-                  updateQuote(
-                    isCompletionReport ? "actualLabourCost" : "labourCharge",
-                    e.target.value
-                  )
-                }
-              />
-            </label>
-            <label>
               {isCompletionReport
                 ? "Actual wall putty cost (₹) *"
                 : "Wall putty cost per sq ft (₹)"}
@@ -861,35 +808,6 @@ function QuotationReport({
                 <small>
                   {area.toFixed(2)} sq ft × {money(puttyRatePerSqFoot)} ={" "}
                   {money(puttyCost)}
-                </small>
-              )}
-            </label>
-            <label>
-              {isCompletionReport
-                ? "Actual primer cost (₹) *"
-                : "Primer cost per sq ft (₹)"}
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={
-                  isCompletionReport
-                    ? quote.actualPrimerCost
-                    : quote.primerRatePerSqFoot
-                }
-                onChange={(e) =>
-                  updateQuote(
-                    isCompletionReport
-                      ? "actualPrimerCost"
-                      : "primerRatePerSqFoot",
-                    e.target.value
-                  )
-                }
-              />
-              {!isCompletionReport && (
-                <small>
-                  {area.toFixed(2)} sq ft × {money(primerRatePerSqFoot)} ={" "}
-                  {money(primerCost)}
                 </small>
               )}
             </label>

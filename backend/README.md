@@ -13,6 +13,38 @@ python -m venv .\backend\venv
 Then run the frontend with `npm run dev` from `frontend`. Vite proxies `/api`
 requests to `http://127.0.0.1:5000`.
 
+In **Painting Design**, first choose **Painted** or **Not Painted**, then upload
+a JPG, PNG, or WebP house photo (under 10 MB) and choose a paint brand. For a
+painted house, explicitly click **Detect Colours**. The browser segmentation
+model isolates the house before OpenCV LAB colour clustering returns significant
+distinct colour groups; network access is needed to load the segmentation model
+on first use. Results show estimated detected colours and the closest available
+shade matches, not guaranteed original paint colours. Windows, shadows, and
+unusual viewpoints can still affect estimates.
+
+For an unpainted house, choose a brand before viewing its catalogue. The
+existing Berger palette is available for wall and accent selection; other
+brands are marked unavailable until their verified shade catalogues are
+provided. Custom wall and accent colours can still be applied to the uploaded
+photo. The existing AI-generated design previews remain available separately.
+
+The backend catalogue route is `GET /api/paint-shades/<brand>`. The analysis
+route is `POST /api/paint-colour-analysis` and requires the image, a PNG house
+segmentation mask, and the selected brand. The Berger catalogue at
+`backend/data/berger_shades.json` preserves the existing app palette and uses
+this shape:
+
+```json
+[
+  { "name": "verified shade name", "code": "verified shade number", "hex": "#AABBCC" }
+]
+```
+
+Each match uses CIELAB Delta E (CIE76) and returns its distance and a similarity
+score. Do not add unverified shade names or codes. Asian Paints, Nerolac, and
+Dulux are intentionally reported as unavailable until catalogues with verified
+shade names, codes, and colour values are supplied.
+
 Open **Labour Attendance** from the navigation or dashboard. Choose a week
 (weeks are grouped Monday through Sunday), add labourers, and record each day
 as Present, Half-day, or Absent. Attendance saves automatically. The report

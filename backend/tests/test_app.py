@@ -1,4 +1,5 @@
 import json
+import io
 import math
 import tempfile
 import unittest
@@ -6,6 +7,7 @@ import uuid
 from pathlib import Path
 
 from app import create_app
+from PIL import Image, ImageDraw
 
 
 class MeasurementApiTests(unittest.TestCase):
@@ -43,6 +45,310 @@ class MeasurementApiTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
+
+    def _house_image(self) -> bytes:
+        image = Image.new("RGB", (400, 300), "#659DD0")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((35, 25, 365, 65), fill="#B5212A")
+        draw.rectangle((35, 65, 365, 76), fill="#FFFDF5")
+        draw.rectangle((35, 76, 130, 245), fill="#F4E4C7")
+        draw.rectangle((130, 76, 230, 245), fill="#FFD21C")
+        draw.rectangle((230, 76, 300, 245), fill="#F06AB2")
+        draw.rectangle((300, 76, 365, 245), fill="#C2188B")
+        draw.rectangle((124, 76, 134, 245), fill="#F06F2E")
+        draw.rectangle((130, 160, 185, 235), fill="#68402C")
+        draw.rectangle((0, 65, 40, 150), fill="#34843A")
+        draw.rectangle((0, 245, 400, 300), fill="#888888")
+        draw.rectangle((45, 110, 65, 145), fill="#101010")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    def _house_mask(self) -> bytes:
+        image = Image.new("L", (400, 300), 0)
+        ImageDraw.Draw(image).rectangle((35, 25, 365, 245), fill=255)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    def _analysis_upload(
+        self, image: bytes, mask: bytes, brand: str = "berger"
+    ) -> dict[str, object]:
+        return {
+            "image": (io.BytesIO(image), "house.png", "image/png"),
+            "house_mask": (io.BytesIO(mask), "house-mask.png", "image/png"),
+            "brand": brand,
+        }
+
+    def test_berger_catalogue_returns_existing_shade_data(self) -> None:
+        response = self.client.get("/api/paint-shades/berger")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["available"])
+        self.assertEqual(response.json["brand"], "berger")
+        self.assertGreater(len(response.json["shades"]), 0)
+        for shade in response.json["shades"]:
+            self.assertTrue(shade["name"])
+            self.assertTrue(shade["code"])
+            self.assertRegex(shade["hex"], r"^#[0-9A-F]{6}$")
+
+    def test_missing_berger_catalogue_is_reported_unavailable(self) -> None:
+        self.app.config["BERGER_SHADE_DATASET"] = str(
+            Path(self.temporary_directory.name) / "missing-shades.json"
+        )
+
+        response = self.client.get("/api/paint-shades/berger")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json["available"])
+        self.assertEqual(response.json["shades"], [])
+        self.assertIn("verified", response.json["message"])
+
+    def test_unverified_brand_catalogues_are_unavailable(self) -> None:
+        for brand in ("asian", "nerolac", "dulux"):
+            with self.subTest(brand=brand):
+                response = self.client.get(f"/api/paint-shades/{brand}")
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.json["available"])
+                self.assertEqual(response.json["shades"], [])
+                self.assertIn("verified", response.json["message"])
+
+    def test_painted_house_analysis_only_matches_the_selected_brand(self) -> None:
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data=self._analysis_upload(
+                self._house_image(), self._house_mask(), brand="asian"
+            ),
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["selected_brand"], "asian")
+        self.assertFalse(response.json["brand_catalogue_available"])
+        self.assertTrue(response.json["brand_match_message"])
+        self.assertTrue(
+            all(region["brand_match"] is None for region in response.json["regions"])
+        )
+
+    def test_painted_house_analysis_requires_a_supported_brand(self) -> None:
+        upload = self._analysis_upload(self._house_image(), self._house_mask())
+        upload["brand"] = "not-a-brand"
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data=upload,
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("supported paint brand", response.json["error"])
+
+    def test_painted_house_analysis_returns_all_distinct_painted_colours(self) -> None:
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data=self._analysis_upload(self._house_image(), self._house_mask()),
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["analysis_version"], 2)
+        colours = {
+            region["colour_name"] for region in response.json["regions"]
+        }
+        self.assertTrue(
+            {"red", "orange", "yellow", "pink", "magenta", "cream", "white"}
+            .issubset(colours),
+            colours,
+        )
+        self.assertGreater(len(response.json["regions"]), 3)
+        self.assertEqual(
+            len({region["hex"] for region in response.json["regions"]}),
+            len(response.json["regions"]),
+        )
+        self.assertNotIn("green", colours)
+        self.assertNotIn("blue", colours)
+        self.assertNotIn("gray", colours)
+        self.assertTrue(response.json["berger_dataset_available"])
+        self.assertEqual(response.json["selected_brand"], "berger")
+        self.assertTrue(response.json["brand_catalogue_available"])
+        for region in response.json["regions"]:
+            self.assertRegex(region["hex"], r"^#[0-9A-F]{6}$")
+            self.assertIsNotNone(region["berger_match"])
+            self.assertEqual(region["brand_match"], region["berger_match"])
+            self.assertTrue(region["component"])
+
+    def test_painted_house_analysis_requires_matching_house_segmentation(self) -> None:
+        missing_mask_response = self.client.post(
+            "/api/paint-colour-analysis",
+            data={
+                "image": (io.BytesIO(self._house_image()), "house.png", "image/png")
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(missing_mask_response.status_code, 400)
+
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data=self._analysis_upload(self._house_image(), self._house_mask()),
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        mismatched_mask = Image.new("L", (300, 300), 255)
+        mask_buffer = io.BytesIO()
+        mismatched_mask.save(mask_buffer, format="PNG")
+        mask_buffer.seek(0)
+        mismatch_response = self.client.post(
+            "/api/paint-colour-analysis",
+            data={
+                **self._analysis_upload(self._house_image(), self._house_mask()),
+                "house_mask": (mask_buffer, "mask.png", "image/png"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(mismatch_response.status_code, 400)
+        self.assertIn("does not match", mismatch_response.json["error"])
+
+    def test_painted_blue_and_green_areas_are_not_filtered_as_sky_or_foliage(self) -> None:
+        image = Image.new("RGB", (400, 300), "#888888")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((40, 35, 360, 260), fill="#3A72D6")
+        draw.rectangle((200, 90, 350, 250), fill="#45A34C")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        mask = Image.new("L", image.size, 0)
+        ImageDraw.Draw(mask).rectangle((40, 35, 360, 260), fill=255)
+        mask_buffer = io.BytesIO()
+        mask.save(mask_buffer, format="PNG")
+        mask_buffer.seek(0)
+
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data={
+                "image": (buffer, "house.png", "image/png"),
+                "house_mask": (mask_buffer, "house-mask.png", "image/png"),
+                "brand": "berger",
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        colours = {region["colour_name"] for region in response.json["regions"]}
+        self.assertIn("blue", colours)
+        self.assertIn("green", colours)
+
+    def test_blue_house_with_gray_roof_is_not_reported_as_lawn_or_sky(self) -> None:
+        image = Image.new("RGB", (400, 300), "#119FE5")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((85, 25, 315, 90), fill="#858585")
+        draw.rectangle((100, 85, 300, 245), fill="#176FB0")
+        draw.rectangle((95, 85, 305, 98), fill="#F8F6EF")
+        draw.rectangle((0, 200, 80, 280), fill="#41943C")
+        draw.rectangle((0, 280, 400, 300), fill="#888888")
+        draw.rectangle((160, 140, 220, 240), fill="#171717")
+        image_buffer = io.BytesIO()
+        image.save(image_buffer, format="PNG")
+
+        mask = Image.new("L", image.size, 0)
+        ImageDraw.Draw(mask).rectangle((85, 25, 315, 245), fill=255)
+        mask_buffer = io.BytesIO()
+        mask.save(mask_buffer, format="PNG")
+        mask_buffer.seek(0)
+
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data={
+                "image": (
+                    io.BytesIO(image_buffer.getvalue()),
+                    "blue-house.png",
+                    "image/png",
+                ),
+                "house_mask": (mask_buffer, "house-mask.png", "image/png"),
+                "brand": "berger",
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        colours = {region["colour_name"] for region in response.json["regions"]}
+        self.assertIn("blue", colours)
+        self.assertIn("gray", colours)
+        self.assertIn("white", colours)
+        self.assertNotIn("green", colours)
+        self.assertNotIn("cyan", colours)
+
+    def test_painted_house_analysis_matches_a_configured_shade_using_lab_distance(self) -> None:
+        dataset_path = Path(self.temporary_directory.name) / "berger_shades.json"
+        dataset_path.write_text(
+            json.dumps(
+                [
+                    {"name": "Test Roof Shade", "code": "TEST-1", "hex": "#B5212A"},
+                    {"name": "Test Alternate Shade", "code": "TEST-2", "hex": "#123456"},
+                ]
+            ),
+            encoding="utf-8",
+        )
+        self.app.config["BERGER_SHADE_DATASET"] = str(dataset_path)
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data=self._analysis_upload(self._house_image(), self._house_mask()),
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["berger_dataset_available"])
+        matching_colour = next(
+            region for region in response.json["regions"]
+            if region["colour_name"] == "red"
+        )
+        self.assertEqual(matching_colour["berger_match"]["name"], "Test Roof Shade")
+        self.assertEqual(matching_colour["berger_match"]["code"], "TEST-1")
+        self.assertLess(matching_colour["berger_match"]["delta_e"], 2)
+        self.assertGreater(matching_colour["berger_match"]["similarity"], 98)
+
+    def test_painted_house_analysis_rejects_invalid_files(self) -> None:
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data={
+                "image": (io.BytesIO(b"not an image"), "house.png", "image/png"),
+                "house_mask": (
+                    io.BytesIO(self._house_mask()),
+                    "house-mask.png",
+                    "image/png",
+                ),
+                "brand": "berger",
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("image", response.json["error"].lower())
+
+    def test_painted_house_analysis_rejects_unsupported_mime_type(self) -> None:
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data={"image": (io.BytesIO(self._house_image()), "house.gif", "image/gif")},
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("JPEG, PNG, or WebP", response.json["error"])
+
+    def test_painted_house_analysis_rejects_files_over_ten_megabytes(self) -> None:
+        response = self.client.post(
+            "/api/paint-colour-analysis",
+            data={
+                "image": (
+                    io.BytesIO(b"x" * (10 * 1024 * 1024 + 1)),
+                    "house.png",
+                    "image/png",
+                )
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertIn("10 MB", response.json["error"])
 
     def test_measurements_round_trip_through_sqlite(self) -> None:
         save_response = self.client.put(

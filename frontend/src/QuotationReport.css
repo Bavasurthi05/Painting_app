@@ -3,7 +3,7 @@
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
   align-items: start;
   gap: 24px;
-  max-width: 1400px;
+  max-width: var(--page-content-width);
   margin: 0 auto;
 }
 
