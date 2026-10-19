@@ -2,8 +2,9 @@
 import { useState } from "react";
 import "./Signup.css";
 import PainterMascot from "./PainterMascot";
+import { registerAccount } from "./measurementApi";
 
-function Signup({ onLoginClick,onSignupSuccess }) {
+function Signup({ onLoginClick, onSignupSuccess }) {
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -13,6 +14,7 @@ function Signup({ onLoginClick,onSignupSuccess }) {
   });
 
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   function handleChange(event) {
     setForm({
@@ -21,7 +23,7 @@ function Signup({ onLoginClick,onSignupSuccess }) {
     });
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setMessage("");
 
@@ -47,10 +49,10 @@ function Signup({ onLoginClick,onSignupSuccess }) {
     }
 
     
-if (!/^[^\s@]+\.[^\s@]+$/.test(form.email)) {
-  setMessage("Please enter a valid email address.");
-  return;
-}
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      setMessage("Please enter a valid email address.");
+      return;
+    }
 
 
     if (form.password.length < 8) {
@@ -72,10 +74,20 @@ if (!/^[^\s@]+\.[^\s@]+$/.test(form.email)) {
       return;
     }
 
-    setMessage(
-      "Form validated successfully! Account creation needs a backend."
-    );
-    onSignupSuccess();
+    setLoading(true);
+    try {
+      const result = await registerAccount({
+        name: form.name.trim(),
+        phone: form.phone,
+        email: form.email.trim(),
+        password: form.password,
+      });
+      onSignupSuccess(result.user);
+    } catch (error) {
+      setMessage(error.message || "Could not create the account. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -169,8 +181,8 @@ if (!/^[^\s@]+\.[^\s@]+$/.test(form.email)) {
             />
           </div>
 
-          <button className="signup-submit" type="submit">
-            Create Account <span>→</span>
+          <button className="signup-submit" type="submit" disabled={loading}>
+            {loading ? "Creating account…" : "Create Account"} <span>→</span>
           </button>
 
           {message && (

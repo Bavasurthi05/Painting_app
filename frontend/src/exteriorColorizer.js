@@ -107,30 +107,24 @@ export async function detectExteriorSurfaces(canvas) {
     windows: new Uint8Array(width * height),
     doors: new Uint8Array(width * height),
     gates: new Uint8Array(width * height),
+    roof: new Uint8Array(width * height),
   };
-  const fallbackWallMask = new Uint8Array(width * height);
 
   detections.forEach(({ label, mask }) => {
     const normalizedLabel = label?.trim().toLowerCase();
-    if (normalizedLabel === "building" || normalizedLabel === "house") {
-      addMask(
-        fallbackWallMask,
-        mask.data,
-        mask.width,
-        mask.height,
-        width,
-        height
-      );
-    }
     const target =
       normalizedLabel === "wall"
         ? masks.walls
-        : normalizedLabel === "windowpane"
+        : normalizedLabel === "windowpane" || normalizedLabel === "window"
           ? masks.windows
           : normalizedLabel === "door" || normalizedLabel === "screen door"
             ? masks.doors
-            : normalizedLabel === "fence" || normalizedLabel === "railing"
-              ? masks.gates
+            : normalizedLabel === "roof"
+              ? masks.roof
+              : normalizedLabel === "fence" ||
+                  normalizedLabel === "railing" ||
+                  normalizedLabel === "gate"
+                ? masks.gates
               : null;
     if (target) {
       addMask(
@@ -144,18 +138,30 @@ export async function detectExteriorSurfaces(canvas) {
     }
   });
 
-  if (!masks.walls.some((pixel) => pixel > 0)) {
-    masks.walls = fallbackWallMask;
+  const protectedMasks = [
+    masks.windows,
+    masks.doors,
+    masks.roof,
+    masks.gates,
+  ];
+  for (let index = 0; index < masks.walls.length; index += 1) {
+    if (protectedMasks.some((mask) => mask[index])) {
+      masks.walls[index] = 0;
+    }
   }
 
-  if (!masks.walls.some((pixel) => pixel > 0) &&
-      !masks.windows.some((pixel) => pixel > 0) &&
-      !masks.doors.some((pixel) => pixel > 0) &&
-      !masks.gates.some((pixel) => pixel > 0)) {
-    throw new Error("No paintable house surfaces were detected in this photo.");
+  if (!masks.walls.some((pixel) => pixel > 0)) {
+    throw new Error(
+      "No safe exterior-wall mask was detected. Mark the walls manually; the house or full image will not be used as a substitute."
+    );
   }
 
   masks.borders = createBorderMask(masks.walls, width, height);
+  for (let index = 0; index < masks.borders.length; index += 1) {
+    if (protectedMasks.some((mask) => mask[index])) {
+      masks.borders[index] = 0;
+    }
+  }
   return masks;
 }
 

@@ -2,15 +2,22 @@
 import { useState } from "react";
 import "./App.css";
 import PainterMascot from "./PainterMascot";
+import {
+  API_BASE_URL,
+  loginAccount,
+  requestPasswordReset,
+} from "./measurementApi";
 
-function Login({ onSignupClick, onLoginSuccess}) {
+function Login({ onSignupClick, onLoginSuccess, initialMessage = "" }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(initialMessage);
+  const [loading, setLoading] = useState(false);
+  const [recovering, setRecovering] = useState(false);
 
-  function handleLogin(event) {
+  async function handleLogin(event) {
     event.preventDefault();
     setMessage("");
 
@@ -19,13 +26,41 @@ function Login({ onSignupClick, onLoginSuccess}) {
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setMessage("Please enter a valid email address.");
       return;
     }
 
-    setMessage("Login successful!");
-  onLoginSuccess();
+    setLoading(true);
+    try {
+      const result = await loginAccount({
+        email: email.trim(),
+        password,
+        remember,
+      });
+      onLoginSuccess(result.user);
+    } catch (error) {
+      setMessage(error.message || "Could not sign in. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRecovery() {
+    setMessage("");
+    if (!email.trim()) {
+      setMessage("Enter your email address to receive a reset link.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await requestPasswordReset(email.trim());
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error.message || "Could not request a password reset.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -63,14 +98,25 @@ function Login({ onSignupClick, onLoginSuccess}) {
         </div>
 
         <div className="welcome">
-          <h2>Welcome Back!</h2>
+          <h2>{recovering ? "Reset your password" : "Welcome Back!"}</h2>
           <p>
-            Sign in to your account and continue planning
-            your painting projects.
+            {recovering
+              ? "Enter your email address and we’ll send a secure reset link."
+              : "Sign in to your account and continue planning your painting projects."}
           </p>
         </div>
 
-        <form onSubmit={handleLogin} noValidate>
+        <form
+          onSubmit={
+            recovering
+              ? (event) => {
+                  event.preventDefault();
+                  void handleRecovery();
+                }
+              : handleLogin
+          }
+          noValidate
+        >
           <div className="input-box">
             <span className="input-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
@@ -102,7 +148,7 @@ function Login({ onSignupClick, onLoginSuccess}) {
             />
           </div>
 
-          <div className="input-box">
+          {!recovering && <div className="input-box">
             <span className="input-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <rect
@@ -140,66 +186,79 @@ function Login({ onSignupClick, onLoginSuccess}) {
             >
               {showPassword ? "Hide" : "Show"}
             </button>
-          </div>
+          </div>}
 
           <div className="form-options">
-            <label className="remember-option">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(event) => setRemember(event.target.checked)}
-              />
-              <span>Remember me</span>
-            </label>
+            {!recovering && (
+              <label className="remember-option">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(event) => setRemember(event.target.checked)}
+                />
+                <span>Remember me</span>
+              </label>
+            )}
 
             <button
               className="text-link"
               type="button"
-              onClick={() =>
-                setMessage("Password recovery will be added later.")
-              }
+              onClick={() => {
+                setRecovering((current) => !current);
+                setMessage("");
+              }}
             >
-              Forgot password?
+              {recovering ? "Back to login" : "Forgot password?"}
             </button>
           </div>
 
-          <button className="login-button" type="submit">
-            Login <span aria-hidden="true">→</span>
-          </button>
+          {recovering ? (
+            <button className="login-button" type="submit" disabled={loading}>
+              {loading ? "Sending…" : "Send reset link"}
+            </button>
+          ) : (
+            <button className="login-button" type="submit" disabled={loading}>
+              {loading ? "Signing in…" : "Login"} <span aria-hidden="true">→</span>
+            </button>
+          )}
 
           {message && (
-            <p className="form-message" role="status">
+            <p className="form-message" role="alert">
               {message}
             </p>
           )}
 
-          <div className="divider">
-            <span></span>
-            <p>OR</p>
-            <span></span>
-          </div>
+          {!recovering && (
+            <>
+              <div className="divider">
+                <span></span>
+                <p>OR</p>
+                <span></span>
+              </div>
 
-          <button
-            className="google-button"
-            type="button"
-            onClick={() =>
-              setMessage("Google sign-in will be connected later.")
-            }
-          >
-            <span className="google-g">G</span>
-            Continue with Google
-          </button>
+              <button
+                className="google-button"
+                type="button"
+                onClick={() =>
+                  window.location.assign(`${API_BASE_URL}/auth/google`)
+                }
+              >
+                <span className="google-g">G</span>
+                Continue with Google
+              </button>
 
-          <p className="signup-text">
-            Don’t have an account?
-            <button
-              type="button"
-              className="text-link signup-link"
-              onClick={onSignupClick}
-            >
-              Sign Up
-            </button>
-          </p>
+              <p className="signup-text">
+                Don’t have an account?
+                <button
+                  type="button"
+                  className="text-link signup-link"
+                  onClick={onSignupClick}
+                >
+                  Sign Up
+                </button>
+              </p>
+            </>
+          )}
         </form>
       </section>
 

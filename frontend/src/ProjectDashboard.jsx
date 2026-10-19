@@ -299,12 +299,6 @@ function ProjectDashboard({
                 <button
                   className="project-remove-button"
                   type="button"
-                  disabled={projects.length <= 1}
-                  title={
-                    projects.length <= 1
-                      ? "At least one house must remain in the workspace."
-                      : undefined
-                  }
                   onClick={async () => {
                     const confirmed = window.confirm(
                       `Permanently remove ${project.name} and all of its measurements, estimates, quotations, attendance, expenses, payments, and project details? This cannot be undone.`
@@ -320,11 +314,6 @@ function ProjectDashboard({
                 >
                   Remove house
                 </button>
-                {projects.length <= 1 && (
-                  <small className="project-delete-note">
-                    At least one house must remain.
-                  </small>
-                )}
               </>
             )}
           </article>
@@ -335,7 +324,7 @@ function ProjectDashboard({
       {showFinancials && (
       <div className="project-finance-columns">
         <section className="project-finance-card">
-          <h3>Project expenses</h3>
+          <h3>Project expenses · {activeProject.name}</h3>
           <form onSubmit={(event) => addFinanceRecord("expense", event)}>
             <label>Description<input disabled={projectDataStatus === "loading" || projectDataStatus === "error"} required maxLength={200} value={expenseDescription} onChange={(event) => setExpenseDescription(event.target.value)} /></label>
             <label>Date<input disabled={projectDataStatus === "loading" || projectDataStatus === "error"} required type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} /></label>
@@ -345,7 +334,7 @@ function ProjectDashboard({
           <FinanceList records={expenses} onRemove={onRemoveExpense} money={money} empty="No expenses added yet." />
         </section>
         <section className="project-finance-card">
-          <h3>Payments received</h3>
+          <h3>Payments received · {activeProject.name}</h3>
           <form onSubmit={(event) => addFinanceRecord("payment", event)}>
             <label>Description<input disabled={projectDataStatus === "loading" || projectDataStatus === "error"} required maxLength={200} value={paymentDescription} onChange={(event) => setPaymentDescription(event.target.value)} /></label>
             <label>Date<input disabled={projectDataStatus === "loading" || projectDataStatus === "error"} required type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} /></label>

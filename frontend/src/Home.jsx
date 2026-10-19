@@ -14,6 +14,8 @@ import {
 } from "./measurementApi";
 import ProjectDashboard from "./ProjectDashboard";
 import PaintingDesign from "./components/PaintingDesign";
+import Profile from "./Profile";
+import FirstHouseSetup from "./FirstHouseSetup";
 
 
 const QuotationReport = lazy(() => import("./QuotationReport"));
@@ -359,6 +361,7 @@ function getMondayOfWeek(date) {
 
 function Home({
   onLogout,
+  authError,
   onNavigate,
   initialSection = "home",
   walls,
@@ -391,6 +394,8 @@ function Home({
 const [houseImageRotation, setHouseImageRotation] = useState(
   () => Math.floor(Math.random() * 1000)
 );
+const [logoutError, setLogoutError] = useState("");
+const [loggingOut, setLoggingOut] = useState(false);
 const previousSectionRef = useRef(initialSection);
 const [uploadedImage, setUploadedImage] = useState("");
 const [imageName, setImageName] = useState("");
@@ -455,8 +460,8 @@ useEffect(() => {
   const [costPerSquareFoot, setCostPerSquareFoot] = useState("");
   const [quoteDetails, setQuoteDetails] = useState(() => ({
     ...createInitialQuoteDetails(),
-    ownerName: activeProject.customerName,
-    ownerAddress: activeProject.location,
+    ownerName: activeProject?.customerName || "",
+    ownerAddress: activeProject?.location || "",
   }));
   useEffect(() => {
     latestProjectDataRef.current = {
@@ -678,6 +683,10 @@ useEffect(() => {
   );
 
   useEffect(() => {
+    if (!projectId) {
+      projectDataReadyRef.current = false;
+      return undefined;
+    }
     let isCurrent = true;
     projectDataReadyRef.current = false;
     loadProjectData(workspaceId, projectId)
@@ -722,7 +731,7 @@ useEffect(() => {
   }, [workspaceId, projectId, projectDataLoadAttempt]);
 
   useEffect(() => {
-    if (!projectDataReadyRef.current) return undefined;
+    if (!projectId || !projectDataReadyRef.current) return undefined;
     const snapshot = {
       paintPrice,
       materialCost,
@@ -782,6 +791,7 @@ useEffect(() => {
     const savedWorkspaceId = workspaceId;
     const savedProjectId = projectId;
     return () => {
+      if (!savedProjectId) return;
       const projectSnapshot = latestProjectDataRef.current;
       if (
         !skipProjectExitSaveRef.current &&
@@ -828,6 +838,7 @@ useEffect(() => {
 
   useEffect(() => {
     function saveHouseDataOnPageExit() {
+      if (!projectId) return;
       const projectSnapshot = latestProjectDataRef.current;
       if (
         !skipProjectExitSaveRef.current &&
@@ -878,6 +889,7 @@ useEffect(() => {
   }, [workspaceId, projectId]);
 
   useEffect(() => {
+    if (!projectId) return undefined;
     let isCurrent = true;
     loadWeeklyAttendance(projectId, attendanceWeekStart)
       .then(({ attendance }) => {
@@ -903,6 +915,7 @@ useEffect(() => {
 
   useEffect(() => {
     if (
+      !projectId ||
       !attendanceDirty ||
       attendanceLoadedWeek !== attendanceWeekStart
     ) {
@@ -1080,6 +1093,7 @@ useEffect(() => {
   }
 
   function renderProjectDataSyncStatus() {
+    if (!projectId) return null;
     const hasError = projectDataStatus.endsWith("error");
     if (!hasError) return null;
 
@@ -1423,6 +1437,43 @@ useEffect(() => {
     />
   );
 
+  async function handleLogoutClick() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError("");
+    skipProjectExitSaveRef.current = true;
+    try {
+      if (projectId) {
+        await projectDataSaveQueueRef.current.catch(() => {});
+        const projectSnapshot = latestProjectDataRef.current;
+        if (projectDataReadyRef.current && projectSnapshot) {
+          await saveProjectData(workspaceId, projectId, projectSnapshot);
+        }
+
+        await attendanceSaveQueueRef.current.catch(() => {});
+        const attendance = latestAttendanceRef.current;
+        if (
+          attendance?.weekStart &&
+          attendance.weekStart === attendance.loadedWeek
+        ) {
+          await saveWeeklyAttendance(
+            projectId,
+            attendance.weekStart,
+            attendance.labourers
+          );
+        }
+      }
+      await onLogout();
+    } catch (error) {
+      skipProjectExitSaveRef.current = false;
+      setLogoutError(
+        error.message || "Could not save your work or sign out. Please try again."
+      );
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
   return (
     <div className="home-page">
       <header className="home-navbar">
@@ -1437,16 +1488,21 @@ useEffect(() => {
 
         
 <nav className="home-nav-links">
-  <a href="#home" onClick={(e) => {
+  <a className={initialSection === "home" ? "active" : ""} aria-current={initialSection === "home" ? "page" : undefined} href="#home" onClick={(e) => {
     e.preventDefault();
     onNavigate("home");
   }}>
     Home
   </a>
-  <a href="#projects" onClick={(e) => {
-    e.preventDefault();
-    goToPage("projects");
-  }}>
+  <a
+    className={initialSection === "projects" ? "active" : ""}
+    aria-current={initialSection === "projects" ? "page" : undefined}
+    href="#projects"
+    onClick={(e) => {
+      e.preventDefault();
+      goToPage("projects");
+    }}
+  >
     Houses
   </a>
 
@@ -1501,10 +1557,26 @@ useEffect(() => {
   Labour Attendance
 </a>
 
+<a
+    className={initialSection === "profile" ? "active" : ""}
+    aria-current={initialSection === "profile" ? "page" : undefined}
+    href="#profile"
+    onClick={(e) => {
+      e.preventDefault();
+      goToPage("profile");
+    }}
+  >
+    <svg className="profile-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" />
+    </svg>
+    Profile
+  </a>
 </nav>
 
 
-        {initialSection !== "home" && (
+        {projects.length > 0 &&
+          initialSection !== "home" &&
+          initialSection !== "profile" && (
           <label className="house-nav-switcher">
             <span>Current house</span>
             <select
@@ -1519,12 +1591,28 @@ useEffect(() => {
           </label>
         )}
 
-        <button className="home-logout" onClick={onLogout}>
-          Logout
-        </button>
+        {initialSection !== "profile" && (logoutError || authError) && (
+          <p className="design-error" role="alert">
+            {logoutError || authError}
+          </p>
+        )}
       </header>
 
       <main id="home">
+        {projects.length === 0 &&
+          initialSection !== "projects" &&
+          initialSection !== "profile" && (
+            <p className="no-house-notice" role="status">
+              Add a house from the Houses page to save project data.
+            </p>
+          )}
+        {initialSection === "profile" && (
+          <Profile
+            onLogout={handleLogoutClick}
+            loggingOut={loggingOut}
+            logoutError={logoutError || authError}
+          />
+        )}
         {["cost-estimation", "quotation-report", "painting-design"].includes(
           initialSection
         ) && renderProjectDataSyncStatus()}
@@ -1684,7 +1772,15 @@ useEffect(() => {
   </>
 )}
 
-        {initialSection === "projects" && projectDashboard}
+        {initialSection === "projects" &&
+          (projects.length === 0 ? (
+            <FirstHouseSetup
+              onCreateProject={onCreateProject}
+              error={projectActionError}
+            />
+          ) : (
+            projectDashboard
+          ))}
 
         {initialSection==="measurements"&&(
         <section className="home-tools" id="measurements">
@@ -2500,7 +2596,7 @@ useEffect(() => {
   <PaintingDesign />
 )}
 
-        {initialSection==="home"&&(
+        {initialSection === "home" && projects.length > 0 && (
         projectDashboard
         )}
 

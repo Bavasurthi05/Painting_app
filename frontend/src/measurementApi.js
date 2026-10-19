@@ -1,7 +1,10 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
+const configuredApiBase = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
   /\/$/,
   ""
 );
+export const API_BASE_URL = configuredApiBase.endsWith("/api")
+  ? configuredApiBase
+  : `${configuredApiBase}/api`;
 const PROJECT_ID_KEY = "paintwise.measurementProjectId";
 
 export function getMeasurementProjectId() {
@@ -40,6 +43,86 @@ async function parseResponse(response) {
   return result;
 }
 
+export async function apiFetch(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    credentials: "include",
+  });
+  if (response.status === 401) {
+    window.dispatchEvent(new Event("paintwise:unauthorized"));
+  }
+  return response;
+}
+
+export async function getCurrentUser() {
+  const result = await parseResponse(
+    await apiFetch(`${API_BASE_URL}/auth/me`)
+  );
+  return result.user;
+}
+
+export async function getProfile(options = {}) {
+  return parseResponse(
+    await apiFetch(`${API_BASE_URL}/profile`, options)
+  );
+}
+
+export async function updateProfile(profile) {
+  return parseResponse(
+    await apiFetch(`${API_BASE_URL}/profile`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    })
+  );
+}
+
+export async function registerAccount(account) {
+  return parseResponse(
+    await apiFetch(`${API_BASE_URL}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(account),
+    })
+  );
+}
+
+export async function loginAccount(credentials) {
+  return parseResponse(
+    await apiFetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentials),
+    })
+  );
+}
+
+export async function logoutAccount() {
+  return parseResponse(
+    await apiFetch(`${API_BASE_URL}/auth/logout`, { method: "POST" })
+  );
+}
+
+export async function requestPasswordReset(email) {
+  return parseResponse(
+    await apiFetch(`${API_BASE_URL}/auth/password-reset/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    })
+  );
+}
+
+export async function completePasswordReset(token, password) {
+  return parseResponse(
+    await apiFetch(`${API_BASE_URL}/auth/password-reset/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    })
+  );
+}
+
 function measurementsUrl(projectId) {
   return `${API_BASE_URL}/measurements/${encodeURIComponent(projectId)}`;
 }
@@ -49,12 +132,12 @@ function attendanceUrl(projectId, weekStart) {
 }
 
 export async function loadMeasurements(projectId) {
-  const response = await fetch(measurementsUrl(projectId));
+  const response = await apiFetch(measurementsUrl(projectId));
   return parseResponse(response);
 }
 
 export async function loadWeeklyAttendance(projectId, weekStart) {
-  const response = await fetch(attendanceUrl(projectId, weekStart));
+  const response = await apiFetch(attendanceUrl(projectId, weekStart));
   return parseResponse(response);
 }
 
@@ -64,7 +147,7 @@ export async function saveWeeklyAttendance(
   labourers,
   keepalive = false
 ) {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE_URL}/attendance/${encodeURIComponent(projectId)}`,
     {
       method: "PUT",
@@ -81,7 +164,7 @@ export async function saveMeasurements(
   measurements,
   keepalive = false
 ) {
-  const response = await fetch(measurementsUrl(projectId), {
+  const response = await apiFetch(measurementsUrl(projectId), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(measurements),
@@ -99,12 +182,12 @@ function projectUrl(workspaceId, projectId) {
 }
 
 export async function loadProjects(workspaceId) {
-  const response = await fetch(projectsUrl(workspaceId));
+  const response = await apiFetch(projectsUrl(workspaceId));
   return parseResponse(response);
 }
 
 export async function createProject(workspaceId, project) {
-  const response = await fetch(projectsUrl(workspaceId), {
+  const response = await apiFetch(projectsUrl(workspaceId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(project),
@@ -113,7 +196,7 @@ export async function createProject(workspaceId, project) {
 }
 
 export async function updateProject(workspaceId, projectId, project) {
-  const response = await fetch(projectUrl(workspaceId, projectId), {
+  const response = await apiFetch(projectUrl(workspaceId, projectId), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(project),
@@ -122,14 +205,14 @@ export async function updateProject(workspaceId, projectId, project) {
 }
 
 export async function deleteProject(workspaceId, projectId) {
-  const response = await fetch(projectUrl(workspaceId, projectId), {
+  const response = await apiFetch(projectUrl(workspaceId, projectId), {
     method: "DELETE",
   });
   return parseResponse(response);
 }
 
 export async function loadProjectData(workspaceId, projectId) {
-  const response = await fetch(`${projectUrl(workspaceId, projectId)}/data`);
+  const response = await apiFetch(`${projectUrl(workspaceId, projectId)}/data`);
   return parseResponse(response);
 }
 
@@ -139,7 +222,7 @@ export async function saveProjectData(
   data,
   keepalive = false
 ) {
-  const response = await fetch(`${projectUrl(workspaceId, projectId)}/data`, {
+  const response = await apiFetch(`${projectUrl(workspaceId, projectId)}/data`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -149,11 +232,11 @@ export async function saveProjectData(
 }
 
 export async function loadBusinessSummary(workspaceId) {
-  const response = await fetch(`${projectsUrl(workspaceId)}/summary`);
+  const response = await apiFetch(`${projectsUrl(workspaceId)}/summary`);
   return parseResponse(response);
 }
 
 export async function exportProject(workspaceId, projectId) {
-  const response = await fetch(`${projectUrl(workspaceId, projectId)}/export`);
+  const response = await apiFetch(`${projectUrl(workspaceId, projectId)}/export`);
   return parseResponse(response);
 }

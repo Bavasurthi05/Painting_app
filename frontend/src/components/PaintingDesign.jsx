@@ -6,6 +6,7 @@ import {
   detectPaintedHouseMask,
   detectExteriorSurfaces,
 } from "../exteriorColorizer";
+import { API_BASE_URL, apiFetch } from "../measurementApi";
 
 const DESIGNS = [
   {
@@ -55,16 +56,13 @@ const DESIGNS = [
   },
 ];
 
-const API_BASE = (
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000"
-).replace(/\/$/, "");
-
 const PAINT_BRANDS = [
   { id: "berger", name: "Berger Paints" },
   { id: "asian", name: "Asian Paints" },
   { id: "nerolac", name: "Nerolac Paints" },
   { id: "dulux", name: "Dulux Paints" },
 ];
+const PREVIEW_PAINT_BRANDS = PAINT_BRANDS.slice(0, 3);
 
 function hexToLab(hex) {
   const channels = [1, 3, 5].map((index) =>
@@ -160,6 +158,94 @@ async function createHouseMaskFile(file) {
   }
 }
 
+async function createLocalSurfaceMasks(file) {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const scale = Math.min(
+      1,
+      1024 / Math.max(image.naturalWidth, image.naturalHeight)
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) {
+      throw new Error("Your browser could not prepare the local wall masks.");
+    }
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const detected = await detectExteriorSurfaces(canvas);
+    const walls = new Uint8Array(detected.walls);
+    const trim = new Uint8Array(detected.borders);
+    const protectedMask = new Uint8Array(canvas.width * canvas.height);
+    for (const surface of ["windows", "doors", "roof", "gates"]) {
+      for (let index = 0; index < protectedMask.length; index += 1) {
+        if (detected[surface][index]) protectedMask[index] = 255;
+      }
+    }
+    for (let index = 0; index < walls.length; index += 1) {
+      if (trim[index] || protectedMask[index]) walls[index] = 0;
+      if (protectedMask[index]) trim[index] = 0;
+    }
+    return {
+      width: canvas.width,
+      height: canvas.height,
+      walls,
+      trim,
+      protected: protectedMask,
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function emptyLocalSurfaceMasks(width, height) {
+  const size = width * height;
+  return {
+    width,
+    height,
+    walls: new Uint8Array(size),
+    trim: new Uint8Array(size),
+    protected: new Uint8Array(size),
+  };
+}
+
+async function localMaskBlob(mask, width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Your browser could not prepare the local paint masks.");
+  }
+  const pixels = context.createImageData(width, height);
+  for (let index = 0; index < mask.length; index += 1) {
+    const offset = index * 4;
+    const value = mask[index];
+    pixels.data[offset] = value;
+    pixels.data[offset + 1] = value;
+    pixels.data[offset + 2] = value;
+    pixels.data[offset + 3] = 255;
+  }
+  context.putImageData(pixels, 0, 0);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Could not encode a local paint mask."));
+    }, "image/png");
+  });
+}
+
+function countMaskPixels(mask) {
+  let count = 0;
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index]) count += 1;
+  }
+  return count;
+}
+
 async function applyGeneratedDesignColours(imageSource, design) {
   const image = new Image();
   await new Promise((resolve, reject) => {
@@ -220,8 +306,10 @@ export default function PaintingDesign() {
   const [shadeCatalogue, setShadeCatalogue] = useState(null);
   const [catalogueError, setCatalogueError] = useState("");
   const [paletteTarget, setPaletteTarget] = useState("walls");
-  const [wallColour, setWallColour] = useState(DESIGNS[0].wall);
-  const [accentColour, setAccentColour] = useState(DESIGNS[0].trim);
+  const [wallColour, setWallColour] = useState("#E8CFA7");
+  const [accentColour, setAccentColour] = useState("#FFFFFF");
+  const [wallShadeCode, setWallShadeCode] = useState("");
+  const [trimShadeCode, setTrimShadeCode] = useState("");
   const [customDesignPreview, setCustomDesignPreview] = useState("");
   const [applyingSelectedColours, setApplyingSelectedColours] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -230,10 +318,21 @@ export default function PaintingDesign() {
   const [aiPreviews, setAiPreviews] = useState({});
   const [selectedDesign, setSelectedDesign] = useState("rose-pink");
   const [loading, setLoading] = useState(false);
+  const [customPreviewLoading, setCustomPreviewLoading] = useState(false);
+  const [customAiPreview, setCustomAiPreview] = useState("");
+  const [customPreviewMethod, setCustomPreviewMethod] = useState("");
+  const [localMasks, setLocalMasks] = useState(null);
+  const [maskEditorOpen, setMaskEditorOpen] = useState(false);
+  const [maskTarget, setMaskTarget] = useState("walls");
+  const [maskErase, setMaskErase] = useState(false);
+  const [maskBrushSize, setMaskBrushSize] = useState(18);
+  const [comparingOriginal, setComparingOriginal] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const analysisRequest = useRef(null);
   const analysisRequestId = useRef(0);
+  const maskCanvasRef = useRef(null);
+  const paintingMaskRef = useRef(false);
 
   useEffect(() => {
     if (!photoPreview) return undefined;
@@ -248,12 +347,42 @@ export default function PaintingDesign() {
   );
 
   useEffect(() => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas || !localMasks || !maskEditorOpen) return;
+    canvas.width = localMasks.width;
+    canvas.height = localMasks.height;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    const pixels = context.createImageData(localMasks.width, localMasks.height);
+    for (let index = 0; index < localMasks.walls.length; index += 1) {
+      const offset = index * 4;
+      if (localMasks.protected[index]) {
+        pixels.data[offset] = 239;
+        pixels.data[offset + 1] = 68;
+        pixels.data[offset + 2] = 68;
+        pixels.data[offset + 3] = 145;
+      } else if (localMasks.trim[index]) {
+        pixels.data[offset] = 245;
+        pixels.data[offset + 1] = 158;
+        pixels.data[offset + 2] = 11;
+        pixels.data[offset + 3] = 135;
+      } else if (localMasks.walls[index]) {
+        pixels.data[offset] = 37;
+        pixels.data[offset + 1] = 99;
+        pixels.data[offset + 2] = 235;
+        pixels.data[offset + 3] = 130;
+      }
+    }
+    context.putImageData(pixels, 0, 0);
+  }, [localMasks, maskEditorOpen]);
+
+  useEffect(() => {
     if (!selectedBrand) {
       return undefined;
     }
 
     const controller = new AbortController();
-    fetch(`${API_BASE}/api/paint-shades/${selectedBrand}`, {
+    apiFetch(`${API_BASE_URL}/paint-shades/${selectedBrand}`, {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -295,7 +424,7 @@ export default function PaintingDesign() {
       if (requestId !== analysisRequestId.current) return;
       formData.append("house_mask", houseMask, "house-mask.png");
 
-      const response = await fetch(`${API_BASE}/api/paint-colour-analysis`, {
+      const response = await apiFetch(`${API_BASE_URL}/paint-colour-analysis`, {
         method: "POST",
         body: formData,
         signal: controller.signal,
@@ -373,6 +502,10 @@ export default function PaintingDesign() {
     setAnalysisResult(null);
     setAnalysisError("");
     setCustomDesignPreview("");
+    setCustomAiPreview("");
+    setCustomPreviewMethod("");
+    setLocalMasks(null);
+    setMaskEditorOpen(false);
     setError("");
     setProgress("");
   }
@@ -388,9 +521,16 @@ export default function PaintingDesign() {
     setAnalysisLoading(false);
     setAnalysisError("");
     setCustomDesignPreview("");
+    setCustomAiPreview("");
+    setCustomPreviewMethod("");
+    setLocalMasks(null);
+    setMaskEditorOpen(false);
     setCatalogueError("");
-    setWallColour(DESIGNS[0].wall);
-    setAccentColour(DESIGNS[0].trim);
+    setShadeCatalogue(null);
+    setWallShadeCode("");
+    setTrimShadeCode("");
+    setWallColour("#E8CFA7");
+    setAccentColour("#FFFFFF");
     setError("");
     setProgress("");
   }
@@ -402,6 +542,10 @@ export default function PaintingDesign() {
     setAnalysisLoading(false);
     setSelectedBrand(brand);
     setCustomDesignPreview("");
+    setCustomAiPreview("");
+    setCustomPreviewMethod("");
+    setWallShadeCode("");
+    setTrimShadeCode("");
     setAiPreviews({});
     setProgress("");
     setError("");
@@ -422,6 +566,282 @@ export default function PaintingDesign() {
       return;
     }
     analyzePaintedImage(photoFile, selectedBrand);
+  }
+
+  function selectPreviewShade(target, code) {
+    const shade = activeShadeCatalogue?.shades.find(
+      (item) => item.code === code
+    );
+    setError("");
+    setProgress("");
+    if (target === "walls") {
+      setWallShadeCode(shade?.code || "");
+      if (shade) setWallColour(shade.hex);
+      setCustomAiPreview("");
+      setCustomPreviewMethod("");
+      return;
+    }
+    setTrimShadeCode(shade?.code || "");
+    if (shade) setAccentColour(shade.hex);
+    setCustomAiPreview("");
+    setCustomPreviewMethod("");
+  }
+
+  async function generateLocalPreview(file, masks, wallColor, trimColor) {
+    if (!countMaskPixels(masks.walls)) {
+      throw new Error(
+        "No wall area is selected. Paint the exterior walls blue in the mask editor; unmasked photos are never recoloured."
+      );
+    }
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("wall_color", wallColor);
+    formData.append("trim_color", trimColor);
+    formData.append(
+      "wall_mask",
+      await localMaskBlob(masks.walls, masks.width, masks.height),
+      "wall-mask.png"
+    );
+    formData.append(
+      "trim_mask",
+      await localMaskBlob(masks.trim, masks.width, masks.height),
+      "trim-mask.png"
+    );
+    formData.append(
+      "protected_mask",
+      await localMaskBlob(masks.protected, masks.width, masks.height),
+      "protected-mask.png"
+    );
+    const response = await apiFetch(`${API_BASE_URL}/home-design/local-preview`, {
+      method: "POST",
+      body: formData,
+    });
+    let result;
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("application/json")) {
+      if (!response.ok) {
+        throw new Error(
+          `The local preview service returned HTTP ${response.status} instead of JSON. Restart Flask so the latest local-preview endpoint is loaded, then try again.`
+        );
+      }
+      throw new Error(
+        `The local preview service returned a non-JSON response (HTTP ${response.status}). Check that the updated Flask backend is running at /api/home-design/local-preview.`
+      );
+    }
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error(
+        `The local preview service returned malformed JSON (HTTP ${response.status}). Restart Flask and try again.`
+      );
+    }
+    if (!response.ok) {
+      throw new Error(result.error || "Could not create the local preview.");
+    }
+    if (
+      !result ||
+      typeof result !== "object" ||
+      result.method !== "local-opencv" ||
+      typeof result.image !== "string" ||
+      !result.image.startsWith("data:image/png;base64,")
+    ) {
+      throw new Error("The local preview service returned an invalid image.");
+    }
+    setCustomAiPreview(result.image);
+    setCustomPreviewMethod("Local OpenCV");
+    setComparingOriginal(false);
+    setProgress("Local OpenCV preview ready. Only the selected masks were recoloured.");
+  }
+
+  async function fallbackToLocalPreview(reason) {
+    setProgress(
+      `${reason} Switching to the local OpenCV preview; no repeated Gemini request will be made.`
+    );
+    let masks = localMasks;
+    let segmentationError = "";
+    if (!masks) {
+      try {
+        masks = await createLocalSurfaceMasks(photoFile);
+      } catch (err) {
+        segmentationError =
+          err instanceof Error ? err.message : "Automatic wall segmentation failed.";
+        const objectUrl = URL.createObjectURL(photoFile);
+        try {
+          const image = new Image();
+          image.src = objectUrl;
+          await image.decode();
+          const scale = Math.min(
+            1,
+            1024 / Math.max(image.naturalWidth, image.naturalHeight)
+          );
+          masks = emptyLocalSurfaceMasks(
+            Math.max(1, Math.round(image.naturalWidth * scale)),
+            Math.max(1, Math.round(image.naturalHeight * scale))
+          );
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
+      }
+      setLocalMasks(masks);
+    }
+    setMaskEditorOpen(true);
+    if (!countMaskPixels(masks.walls)) {
+      throw new Error(
+        `${reason} ${segmentationError || "Automatic segmentation did not find a safe wall mask."} Paint the exterior walls in the mask editor, then choose Generate local preview. Roofs, windows, doors, and surroundings will not be painted automatically.`
+      );
+    }
+    await generateLocalPreview(photoFile, masks, wallColour, accentColour);
+  }
+
+  async function generateCustomPreview() {
+    if (!photoFile) {
+      setError("Upload a house photo before generating a preview.");
+      return;
+    }
+
+    setCustomPreviewLoading(true);
+    setError("");
+    setProgress("Sending your house photo and selected colours to Gemini...");
+
+    const formData = new FormData();
+    formData.append("image", photoFile);
+    formData.append("wall_color", wallColour);
+    formData.append("wall_color_name", "selected wall colour");
+    formData.append("trim_color", accentColour);
+    formData.append("trim_color_name", "selected trim colour");
+
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/home-design/preview`, {
+        method: "POST",
+        body: formData,
+      });
+      let result;
+      try {
+        result = await response.json();
+      } catch {
+        throw new Error("The image service returned an invalid response.");
+      }
+      if (!response.ok) {
+        throw new Error(result.error || "Could not generate the preview.");
+      }
+      if (
+        typeof result.image !== "string" ||
+        !result.image.startsWith("data:image/")
+      ) {
+        throw new Error("The image service did not return a usable preview.");
+      }
+      setCustomAiPreview(result.image);
+      setCustomPreviewMethod("Gemini AI");
+      setComparingOriginal(false);
+      setProgress("Gemini AI preview ready.");
+    } catch (err) {
+      const reason =
+        err instanceof Error ? err.message : "Gemini image generation failed.";
+      try {
+        await fallbackToLocalPreview(reason);
+      } catch (fallbackError) {
+        setError(
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : `${reason} Local OpenCV fallback failed.`
+        );
+        setProgress("");
+      }
+    } finally {
+      setCustomPreviewLoading(false);
+    }
+  }
+
+  function downloadCustomPreview() {
+    if (!customAiPreview) return;
+    const link = document.createElement("a");
+    link.href = customAiPreview;
+    link.download = "paintwise-house-painting-preview.png";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function paintLocalMask(event) {
+    const canvas = maskCanvasRef.current;
+    if (!canvas || !localMasks) return;
+    const bounds = canvas.getBoundingClientRect();
+    const centerX = Math.floor(
+      ((event.clientX - bounds.left) / bounds.width) * localMasks.width
+    );
+    const centerY = Math.floor(
+      ((event.clientY - bounds.top) / bounds.height) * localMasks.height
+    );
+    const radius = Math.max(
+      1,
+      Math.round((maskBrushSize * localMasks.width) / bounds.width / 2)
+    );
+    const updated = {
+      ...localMasks,
+      walls: new Uint8Array(localMasks.walls),
+      trim: new Uint8Array(localMasks.trim),
+      protected: localMasks.protected,
+    };
+    const target = maskTarget === "walls" ? updated.walls : updated.trim;
+    for (
+      let y = Math.max(0, centerY - radius);
+      y <= Math.min(localMasks.height - 1, centerY + radius);
+      y += 1
+    ) {
+      for (
+        let x = Math.max(0, centerX - radius);
+        x <= Math.min(localMasks.width - 1, centerX + radius);
+        x += 1
+      ) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+        if (dx * dx + dy * dy > radius * radius) continue;
+        const index = y * localMasks.width + x;
+        if (updated.protected[index]) continue;
+        target[index] = maskErase ? 0 : 255;
+        if (!maskErase) {
+          (maskTarget === "walls" ? updated.trim : updated.walls)[index] = 0;
+        }
+      }
+    }
+    setLocalMasks(updated);
+    setCustomAiPreview("");
+    setCustomPreviewMethod("");
+    setProgress("");
+    setError("");
+  }
+
+  function resetLocalMasks() {
+    if (!localMasks) return;
+    setLocalMasks({
+      ...emptyLocalSurfaceMasks(localMasks.width, localMasks.height),
+      protected: localMasks.protected,
+    });
+    setCustomAiPreview("");
+    setCustomPreviewMethod("");
+    setProgress("");
+  }
+
+  async function submitLocalPreview() {
+    if (!photoFile || !localMasks) return;
+    setCustomPreviewLoading(true);
+    setError("");
+    setProgress("Applying selected colours to the edited masks with OpenCV...");
+    try {
+      await generateLocalPreview(
+        photoFile,
+        localMasks,
+        wallColour,
+        accentColour
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not create the local preview."
+      );
+      setProgress("");
+    } finally {
+      setCustomPreviewLoading(false);
+    }
   }
 
   async function applySelectedColours() {
@@ -483,11 +903,6 @@ export default function PaintingDesign() {
       setError("Please upload your house photo first.");
       return;
     }
-    if (!selectedBrand) {
-      setError("Choose a paint brand before generating house designs.");
-      return;
-    }
-
     setLoading(true);
     setError("");
     setProgress("Preparing your AI designs...");
@@ -509,19 +924,15 @@ export default function PaintingDesign() {
         formData.append("trim_color", design.trim);
         formData.append("trim_color_name", design.trimName);
 
-        const response = await fetch(
-          `${API_BASE}/api/home-design/preview`,
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
-
+        const response = await apiFetch(`${API_BASE_URL}/home-design/preview`, {
+          method: "POST",
+          body: formData,
+        });
         const result = await response.json();
 
         if (!response.ok) {
           throw new Error(
-            result.error || `Failed to generate ${design.name}.`
+            `${result.error || `Failed to generate ${design.name}.`} Use Generate Preview for the local OpenCV fallback.`
           );
         }
 
@@ -539,10 +950,19 @@ export default function PaintingDesign() {
 
       setProgress("All five AI designs are ready!");
     } catch (err) {
-      setError(
-        err.message ||
-          "Could not generate designs. Check Flask and your image AI settings."
-      );
+      const reason =
+        err instanceof Error
+          ? err.message
+          : "Gemini image generation failed.";
+      try {
+        await fallbackToLocalPreview(reason);
+      } catch (fallbackError) {
+        setError(
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : `${reason} Local OpenCV fallback failed.`
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -621,7 +1041,7 @@ export default function PaintingDesign() {
                 houseCondition === "painted" ? "selected" : ""
               }`}
               aria-pressed={houseCondition === "painted"}
-              disabled={loading}
+              disabled={loading || customPreviewLoading}
               onClick={() => selectHouseCondition("painted")}
             >
               <strong>Painted</strong>
@@ -633,7 +1053,7 @@ export default function PaintingDesign() {
                 houseCondition === "unpainted" ? "selected" : ""
               }`}
               aria-pressed={houseCondition === "unpainted"}
-              disabled={loading}
+              disabled={loading || customPreviewLoading}
               onClick={() => selectHouseCondition("unpainted")}
             >
               <strong>Not Painted</strong>
@@ -659,11 +1079,11 @@ export default function PaintingDesign() {
                   ? "Upload your house photo"
                   : "Choose a house condition to upload"}
               </strong>
-              <span>JPG, PNG or WebP · Maximum 10 MB</span>
+              <span>JPG, JPEG, PNG or WebP · Maximum 10 MB</span>
 
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                 onChange={handleUpload}
                 disabled={!houseCondition}
               />
@@ -691,35 +1111,281 @@ export default function PaintingDesign() {
                 {photoFile.name}
               </p>
 
-              {houseCondition && (
-                <section className="paint-brand-selection">
-                  <label htmlFor="paint-brand">
-                    Choose a paint brand
+              {houseCondition === "unpainted" && (
+                <section
+                  className="paint-preview-controls"
+                  aria-labelledby="paint-preview-heading"
+                >
+                  <div className="paint-analysis-heading">
+                    <div>
+                      <h3 id="paint-preview-heading">
+                        Choose your paint colours
+                      </h3>
+                      <p>
+                        Select a verified shade when a catalogue is available,
+                        or use any custom HEX colour.
+                      </p>
+                    </div>
+                  </div>
+
+                  <label className="preview-brand-select">
+                    Paint brand catalogue
                     <select
-                      id="paint-brand"
                       value={selectedBrand}
-                      onChange={(event) => handleBrandChange(event.target.value)}
+                      onChange={(event) =>
+                        handleBrandChange(event.target.value)
+                      }
+                      disabled={customPreviewLoading || loading}
                     >
-                      <option value="">Select a brand</option>
-                      {PAINT_BRANDS.map((brand) => (
+                      <option value="">Custom colours / no brand</option>
+                      {PREVIEW_PAINT_BRANDS.map((brand) => (
                         <option key={brand.id} value={brand.id}>
                           {brand.name}
                         </option>
                       ))}
                     </select>
                   </label>
-                  {catalogueLoading && (
-                    <p className="design-notice" role="status">
-                      Loading {PAINT_BRANDS.find((brand) => brand.id === selectedBrand)?.name} shades…
+
+                  {catalogueError && selectedBrand && (
+                    <p className="design-error" role="alert">
+                      {catalogueError} You can still choose custom HEX colours.
                     </p>
                   )}
-                  {catalogueError && (
-                    <p className="design-error" role="alert">
-                      {catalogueError}
+                  {selectedBrand && catalogueLoading && (
+                    <p className="paint-analysis-note" role="status">
+                      Loading verified shade catalogue...
                     </p>
+                  )}
+                  {selectedBrand &&
+                    activeShadeCatalogue &&
+                    !activeShadeCatalogue.available && (
+                      <p className="paint-analysis-note">
+                        {activeShadeCatalogue.message} Choose custom HEX
+                        colours below; official shade names and codes are not
+                        shown without verified catalogue data.
+                      </p>
+                    )}
+
+                  <div className="preview-colour-fields">
+                    <label>
+                      Main wall colour
+                      <input
+                        type="color"
+                        value={wallColour}
+                        disabled={customPreviewLoading}
+                        onChange={(event) => {
+                          setWallColour(event.target.value);
+                          setWallShadeCode("");
+                          setCustomAiPreview("");
+                          setCustomPreviewMethod("");
+                          setError("");
+                          setProgress("");
+                        }}
+                      />
+                      <span>{wallColour.toUpperCase()}</span>
+                    </label>
+                    <label>
+                      Border / trim colour
+                      <input
+                        type="color"
+                        value={accentColour}
+                        disabled={customPreviewLoading}
+                        onChange={(event) => {
+                          setAccentColour(event.target.value);
+                          setTrimShadeCode("");
+                          setCustomAiPreview("");
+                          setCustomPreviewMethod("");
+                          setError("");
+                          setProgress("");
+                        }}
+                      />
+                      <span>{accentColour.toUpperCase()}</span>
+                    </label>
+                  </div>
+
+                  {activeShadeCatalogue?.available && (
+                    <div className="preview-shade-fields">
+                      <label>
+                        Verified wall shade
+                        <select
+                          value={wallShadeCode}
+                          disabled={customPreviewLoading}
+                          onChange={(event) =>
+                            selectPreviewShade("walls", event.target.value)
+                          }
+                        >
+                          <option value="">Use custom wall HEX</option>
+                          {activeShadeCatalogue.shades.map((shade) => (
+                            <option key={shade.code} value={shade.code}>
+                              {shade.name} · {shade.code}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Verified trim shade
+                        <select
+                          value={trimShadeCode}
+                          disabled={customPreviewLoading}
+                          onChange={(event) =>
+                            selectPreviewShade("trim", event.target.value)
+                          }
+                        >
+                          <option value="">Use custom trim HEX</option>
+                          {activeShadeCatalogue.shades.map((shade) => (
+                            <option key={shade.code} value={shade.code}>
+                              {shade.name} · {shade.code}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="preview-action-buttons">
+                    <button
+                      type="button"
+                      className="download-design-button"
+                      onClick={generateCustomPreview}
+                      disabled={!photoFile || customPreviewLoading || loading}
+                    >
+                      {customPreviewLoading
+                        ? "Generating preview..."
+                        : customAiPreview
+                          ? "Regenerate"
+                          : "Generate Preview"}
+                    </button>
+                    {customAiPreview && (
+                      <>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => setComparingOriginal((current) => !current)}
+                        >
+                          {comparingOriginal ? "Show Preview" : "Compare Original"}
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={downloadCustomPreview}
+                        >
+                          Download
+                        </button>
+                      </>
+                    )}
+                    {localMasks && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setMaskEditorOpen((open) => !open)}
+                      >
+                        {maskEditorOpen ? "Hide mask editor" : "Edit masks"}
+                      </button>
+                    )}
+                  </div>
+                  {localMasks && maskEditorOpen && (
+                    <div className="local-mask-editor">
+                      <h4>Review local paint masks</h4>
+                      <p>
+                        Blue marks walls; orange marks trim; red marks detected
+                        windows, doors, roofs, or gates protected from painting.
+                        Brush carefully around openings and roof edges.
+                      </p>
+                      <div className="mask-editor-tools">
+                        <button
+                          type="button"
+                          className={maskTarget === "walls" && !maskErase ? "selected" : ""}
+                          onClick={() => {
+                            setMaskTarget("walls");
+                            setMaskErase(false);
+                          }}
+                        >
+                          Paint walls
+                        </button>
+                        <button
+                          type="button"
+                          className={maskTarget === "trim" && !maskErase ? "selected" : ""}
+                          onClick={() => {
+                            setMaskTarget("trim");
+                            setMaskErase(false);
+                          }}
+                        >
+                          Paint trim
+                        </button>
+                        <button
+                          type="button"
+                          className={maskErase ? "selected" : ""}
+                          onClick={() => setMaskErase(true)}
+                        >
+                          Erase
+                        </button>
+                        <label>
+                          Brush size
+                          <input
+                            type="range"
+                            min="6"
+                            max="48"
+                            value={maskBrushSize}
+                            onChange={(event) =>
+                              setMaskBrushSize(Number(event.target.value))
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="local-mask-canvas-wrap">
+                        <img src={photoPreview} alt="" draggable="false" />
+                        <canvas
+                          ref={maskCanvasRef}
+                          aria-label="Paintable house mask editor. Drag to paint selected masks."
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            paintingMaskRef.current = true;
+                            event.currentTarget.setPointerCapture(event.pointerId);
+                            paintLocalMask(event);
+                          }}
+                          onPointerMove={(event) => {
+                            if (paintingMaskRef.current) paintLocalMask(event);
+                          }}
+                          onPointerUp={() => {
+                            paintingMaskRef.current = false;
+                          }}
+                          onPointerCancel={() => {
+                            paintingMaskRef.current = false;
+                          }}
+                        />
+                      </div>
+                      <div className="local-mask-counts">
+                        <span>Wall pixels: {countMaskPixels(localMasks.walls)}</span>
+                        <span>Trim pixels: {countMaskPixels(localMasks.trim)}</span>
+                      </div>
+                      <div className="preview-action-buttons">
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={resetLocalMasks}
+                          disabled={customPreviewLoading}
+                        >
+                          Clear editable masks
+                        </button>
+                        <button
+                          type="button"
+                          className="download-design-button"
+                          onClick={submitLocalPreview}
+                          disabled={
+                            !countMaskPixels(localMasks.walls) ||
+                            customPreviewLoading
+                          }
+                        >
+                          {customPreviewLoading
+                            ? "Applying local colours..."
+                            : "Generate local preview"}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </section>
               )}
+
 
               {houseCondition === "painted" && (
                 <section className="paint-analysis" aria-live="polite">
@@ -739,6 +1405,35 @@ export default function PaintingDesign() {
                     )}
                   </div>
 
+                  <div className="paint-brand-selection">
+                    <label htmlFor="painted-house-brand">
+                      1. Select paint brand for shade matching
+                    </label>
+                    <select
+                      id="painted-house-brand"
+                      value={selectedBrand}
+                      onChange={(event) =>
+                        handleBrandChange(event.target.value)
+                      }
+                      disabled={analysisLoading}
+                      aria-describedby="painted-house-brand-help"
+                    >
+                      <option value="">Choose a paint brand</option>
+                      {PAINT_BRANDS.map((brand) => (
+                        <option key={brand.id} value={brand.id}>
+                          {brand.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p
+                      id="painted-house-brand-help"
+                      className="paint-analysis-note"
+                    >
+                      Detected colours will be matched against this brand's
+                      verified shade catalogue when available.
+                    </p>
+                  </div>
+
                   <button
                     type="button"
                     className="download-design-button"
@@ -747,6 +1442,25 @@ export default function PaintingDesign() {
                   >
                     {analysisLoading ? "Detecting colours…" : "Detect Colours"}
                   </button>
+                  {catalogueError && selectedBrand && (
+                    <p className="design-error" role="alert">
+                      {catalogueError}
+                    </p>
+                  )}
+                  {selectedBrand && catalogueLoading && (
+                    <p className="paint-analysis-note" role="status">
+                      Loading verified shade catalogue...
+                    </p>
+                  )}
+                  {selectedBrand &&
+                    activeShadeCatalogue &&
+                    !activeShadeCatalogue.available && (
+                      <p className="paint-analysis-note">
+                        {activeShadeCatalogue.message} Colour detection is
+                        available, but official shade matches require verified
+                        catalogue data.
+                      </p>
+                    )}
                   {(!selectedBrand || !photoFile) && (
                     <p className="paint-analysis-note">
                       Upload a house photo and select a paint brand to enable
@@ -843,125 +1557,6 @@ export default function PaintingDesign() {
                 </section>
               )}
 
-              {houseCondition === "unpainted" && (
-                <section className="paint-analysis new-colour-workflow">
-                  <div className="paint-analysis-heading">
-                    <div>
-                      <h3>Design new house colours</h3>
-                      <p>
-                        Select shades for walls and accents, then preview them
-                        on your house.
-                      </p>
-                    </div>
-                  </div>
-
-                  {!selectedBrand ? (
-                    <p className="paint-analysis-note">
-                      Choose a paint brand to view its available shade palette.
-                    </p>
-                  ) : catalogueLoading ? (
-                    <p className="design-notice" role="status">
-                      Loading shade palette…
-                    </p>
-                  ) : activeShadeCatalogue?.available ? (
-                    <>
-                      <div className="palette-target-options" role="group" aria-label="Choose which surface to colour">
-                        <button
-                          type="button"
-                          className={paletteTarget === "walls" ? "selected" : ""}
-                          aria-pressed={paletteTarget === "walls"}
-                          onClick={() => setPaletteTarget("walls")}
-                        >
-                          Walls
-                        </button>
-                        <button
-                          type="button"
-                          className={paletteTarget === "accent" ? "selected" : ""}
-                          aria-pressed={paletteTarget === "accent"}
-                          onClick={() => setPaletteTarget("accent")}
-                        >
-                          Accent areas
-                        </button>
-                      </div>
-                      <div className="brand-shade-grid">
-                        {activeShadeCatalogue.shades.map((shade) => (
-                          <button
-                            className="brand-shade-option"
-                            key={shade.code}
-                            type="button"
-                            onClick={() => {
-                              if (paletteTarget === "walls") {
-                                setWallColour(shade.hex);
-                              } else {
-                                setAccentColour(shade.hex);
-                              }
-                              setCustomDesignPreview("");
-                            }}
-                            aria-label={`Use ${shade.name}, ${shade.code}, for ${paletteTarget}`}
-                          >
-                            <span
-                              className="brand-shade-swatch"
-                              style={{ backgroundColor: shade.hex }}
-                            />
-                            <strong>{shade.name}</strong>
-                            <small>{shade.code}</small>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <p className="design-notice" role="status">
-                      {activeShadeCatalogue?.message ||
-                        "No verified shade catalogue is available for this brand. You can still choose custom wall and accent colours below."}
-                    </p>
-                  )}
-
-                  <div className="custom-colour-controls">
-                    <div className="chosen-colour-swatches" aria-live="polite">
-                      <span>
-                        <i style={{ backgroundColor: wallColour }} />
-                        Wall {wallColour.toUpperCase()}
-                      </span>
-                      <span>
-                        <i style={{ backgroundColor: accentColour }} />
-                        Accent {accentColour.toUpperCase()}
-                      </span>
-                    </div>
-                    <label>
-                      Wall colour
-                      <input
-                        type="color"
-                        value={wallColour}
-                        onChange={(event) => {
-                          setWallColour(event.target.value);
-                          setCustomDesignPreview("");
-                        }}
-                      />
-                    </label>
-                    <label>
-                      Accent colour
-                      <input
-                        type="color"
-                        value={accentColour}
-                        onChange={(event) => {
-                          setAccentColour(event.target.value);
-                          setCustomDesignPreview("");
-                        }}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="download-design-button"
-                      onClick={applySelectedColours}
-                      disabled={!selectedBrand || applyingSelectedColours}
-                    >
-                      {applyingSelectedColours
-                        ? "Applying colours…"
-                        : "Apply selected colours"}
-                    </button>
-                  </div>
-                </section>
-              )}
 
               <div className="photo-actions">
                 <label className="secondary-button replace-photo-button">
@@ -970,13 +1565,15 @@ export default function PaintingDesign() {
                     : "Replace photo"}
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                     onChange={handleUpload}
+                    disabled={loading || customPreviewLoading}
                   />
                 </label>
                 <button
                   type="button"
                   className="text-button"
+                  disabled={loading || customPreviewLoading}
                   onClick={() => {
                     analysisRequest.current?.abort();
                     analysisRequest.current = null;
@@ -987,6 +1584,11 @@ export default function PaintingDesign() {
                     setAnalysisLoading(false);
                     setAnalysisError("");
                     setAiPreviews({});
+                    setCustomAiPreview("");
+                    setCustomPreviewMethod("");
+                    setLocalMasks(null);
+                    setMaskEditorOpen(false);
+                    setComparingOriginal(false);
                     setError("");
                     setProgress("");
                   }}
@@ -998,7 +1600,7 @@ export default function PaintingDesign() {
                     type="button"
                     className="download-design-button generate-design-button"
                     onClick={generateAiDesigns}
-                    disabled={!photoFile || !selectedBrand || loading}
+                    disabled={!photoFile || loading || customPreviewLoading}
                   >
                     {loading ? "Generating AI designs..." : "Generate 5 AI designs"}
                   </button>
@@ -1019,17 +1621,25 @@ export default function PaintingDesign() {
             </p>
           )}
 
-          <p className="privacy-note">
-            Painted-house colour analysis runs through your Flask backend.
-            Unpainted design previews are sent to the configured image-generation
-            service.
-          </p>
+              <p className="privacy-note">
+                House photos are sent to Flask for Gemini previews or local OpenCV
+                processing. Local previews recolour only the wall and trim masks.
+              </p>
         </div>
 
         {photoFile && houseCondition === "unpainted" && (
           <div className="design-results-panel">
             <div className="featured-design-preview">
-              {aiPreviews[selectedDesign] ? (
+              {customAiPreview ? (
+                <img
+                  src={comparingOriginal ? photoPreview : customAiPreview}
+                  alt={
+                    comparingOriginal
+                      ? "Original uploaded house photo"
+                      : "Custom AI house painting preview"
+                  }
+                />
+              ) : aiPreviews[selectedDesign] ? (
                 <img
                   src={aiPreviews[selectedDesign]}
                   alt={`${activeDesign.name} large house painting preview`}
@@ -1041,7 +1651,13 @@ export default function PaintingDesign() {
                     : "Generate the designs to see a large preview"}
                 </div>
               )}
-              <span>{activeDesign.name}</span>
+              <span>
+                {customAiPreview
+                  ? comparingOriginal
+                    ? "Original photo"
+                    : `${customPreviewMethod || "Paint"} colour preview`
+                  : activeDesign.name}
+              </span>
             </div>
 
             <div className="design-preview-grid">

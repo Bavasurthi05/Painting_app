@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import Login from "./Login";
 import Signup from "./Signup";
+import PasswordReset from "./PasswordReset";
 import Home from "./Home";
 import {
   getMeasurementProjectId,
@@ -12,6 +13,8 @@ import {
   saveMeasurements,
   updateProject,
   deleteProject,
+  getCurrentUser,
+  logoutAccount,
 } from "./measurementApi";
 
 import AIChatWidget from "./components/AIChatWidget";
@@ -21,7 +24,15 @@ import AIChatWidget from "./components/AIChatWidget";
 const ACTIVE_PROJECT_KEY = "paintwise.activeHouseProjectId";
 
 function App() {
-  const [page, setPage] = useState("login");
+  const [resetToken] = useState(
+    () => new URLSearchParams(window.location.search).get("reset_token") || ""
+  );
+  const [page, setPage] = useState(() => resetToken ? "reset" : "login");
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(() => Boolean(resetToken));
+  const [authMessage, setAuthMessage] = useState(
+    () => new URLSearchParams(window.location.search).get("auth_error") || ""
+  );
   const [walls, setWalls] = useState([
     { id: 1, name: "Wall 1", length: "", height: "" },
   ]);
@@ -50,6 +61,48 @@ function App() {
   const saveQueueRef = useRef(Promise.resolve());
   const latestMeasurementsRef = useRef(null);
   const deletingMeasurementProjectIdRef = useRef("");
+  const userId = user?.id;
+
+  useEffect(() => {
+    if (window.location.search) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (resetToken) {
+      return undefined;
+    }
+
+    let current = true;
+    getCurrentUser()
+      .then((currentUser) => {
+        if (!current) return;
+        setUser(currentUser);
+        if (currentUser) setPage("home");
+        setAuthChecked(true);
+      })
+      .catch((error) => {
+        if (!current) return;
+        setAuthMessage(error.message || "Could not check your sign-in status.");
+        setAuthChecked(true);
+      });
+    return () => {
+      current = false;
+    };
+  }, [resetToken]);
+
+  useEffect(() => {
+    function handleUnauthorized() {
+      setUser(null);
+      setProjects([]);
+      setActiveProjectId("");
+      setMeasurementsReady(false);
+      setLoadedMeasurementProjectId("");
+      setPage("login");
+      setAuthMessage("Your session has expired. Please sign in again.");
+    }
+    window.addEventListener("paintwise:unauthorized", handleUnauthorized);
+    return () =>
+      window.removeEventListener("paintwise:unauthorized", handleUnauthorized);
+  }, []);
 
   const measurementData = useMemo(
     () => ({
@@ -76,11 +129,18 @@ function App() {
   }, [activeProjectId, measurementData]);
 
   useEffect(() => {
+    if (!userId) return undefined;
     let isCurrent = true;
     loadProjects(workspaceId)
       .then(({ projects: loadedProjects }) => {
         if (!isCurrent) return;
         setProjects(loadedProjects);
+        if (loadedProjects.length === 0) {
+          setActiveProjectId("");
+          window.localStorage.removeItem(ACTIVE_PROJECT_KEY);
+          setProjectsStatus("ready");
+          return;
+        }
         const storedProjectId = window.localStorage.getItem(ACTIVE_PROJECT_KEY);
         const nextProjectId = loadedProjects.some(
           (project) => project.id === storedProjectId
@@ -101,7 +161,7 @@ function App() {
     return () => {
       isCurrent = false;
     };
-  }, [workspaceId, projectsLoadAttempt]);
+  }, [workspaceId, projectsLoadAttempt, userId]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -287,6 +347,12 @@ function App() {
         setMeasurementStoreStatus("loading");
         setActiveProjectId(nextProject.id);
         window.localStorage.setItem(ACTIVE_PROJECT_KEY, nextProject.id);
+      } else if (deletingActiveProject) {
+        setMeasurementsReady(false);
+        setLoadedMeasurementProjectId("");
+        setMeasurementStoreStatus("loading");
+        setActiveProjectId("");
+        window.localStorage.removeItem(ACTIVE_PROJECT_KEY);
       }
     } catch (error) {
       console.error("Could not delete house project.", error);
@@ -325,23 +391,90 @@ function App() {
     return queuedSave;
   }
 
+  function handleAuthenticationSuccess(authenticatedUser) {
+    setUser(authenticatedUser);
+    setAuthMessage("");
+    setProjects([]);
+    setActiveProjectId("");
+    setMeasurementsReady(false);
+    setLoadedMeasurementProjectId("");
+    setProjectsStatus("loading");
+    setPage("home");
+  }
+
+  async function handleLogout() {
+    if (
+      activeProjectId &&
+      measurementsReady &&
+      loadedMeasurementProjectId === activeProjectId
+    ) {
+      try {
+        await saveQueueRef.current;
+      } catch (error) {
+        console.error("Could not finish queued measurement saves.", error);
+        setAuthMessage("Your recent measurement changes could not be saved. Please retry before signing out.");
+        throw error;
+      }
+      const latest = latestMeasurementsRef.current;
+      if (latest?.projectId === activeProjectId) {
+        try {
+          await saveMeasurements(activeProjectId, latest.data);
+        } catch (error) {
+          console.error("Could not save measurements before sign out.", error);
+          setAuthMessage("Your recent measurement changes could not be saved. Please retry before signing out.");
+          throw error;
+        }
+      }
+    }
+    try {
+      await logoutAccount();
+    } catch (error) {
+      setAuthMessage(error.message || "Could not sign out. Please try again.");
+      throw error;
+    }
+    setUser(null);
+    setProjects([]);
+    setActiveProjectId("");
+    setMeasurementsReady(false);
+    setLoadedMeasurementProjectId("");
+    setAuthMessage("");
+    setPage("login");
+  }
+
   return (
     <>
-      {page === "login" && (
+      {!authChecked && (
+        <main className="workspace-loading" role="status">
+          Checking your sign-in…
+        </main>
+      )}
+      {authChecked && page === "login" && (
         <Login
           onSignupClick={() => setPage("signup")}
-          onLoginSuccess={() => setPage("home")}
+          onLoginSuccess={handleAuthenticationSuccess}
+          initialMessage={authMessage}
         />
       )}
 
-      {page === "signup" && (
+      {authChecked && page === "signup" && (
         <Signup
           onLoginClick={() => setPage("login")}
-          onSignupSuccess={() => setPage("home")}
+          onSignupSuccess={handleAuthenticationSuccess}
         />
       )}
 
-      {page !== "login" && page !== "signup" && (
+      {authChecked && page === "reset" && (
+        <PasswordReset
+          token={resetToken}
+          onCancel={() => setPage("login")}
+          onComplete={() => {
+            setAuthMessage("Your password has been reset. Please sign in.");
+            setPage("login");
+          }}
+        />
+      )}
+
+      {authChecked && user && page !== "login" && page !== "signup" && page !== "reset" && (
         projectsStatus === "loading" ? (
           <main className="workspace-loading" role="status">Loading your house projects…</main>
         ) : projectsStatus === "error" ? (
@@ -354,18 +487,19 @@ function App() {
               Retry
             </button>
           </main>
-        ) : activeProjectId !== loadedMeasurementProjectId &&
+        ) : activeProjectId && activeProjectId !== loadedMeasurementProjectId &&
           measurementStoreStatus === "load-error" ? (
           <main className="workspace-loading" role="alert">
             Could not load this house’s measurements.{" "}
             <button onClick={retryMeasurementSync}>Retry</button>
           </main>
-        ) : activeProjectId !== loadedMeasurementProjectId ? (
+        ) : activeProjectId && activeProjectId !== loadedMeasurementProjectId ? (
           <main className="workspace-loading" role="status">Loading this house’s measurements…</main>
         ) : (
         <Home
-          key={activeProjectId}
-          onLogout={() => setPage("login")}
+          key={activeProjectId || "no-house"}
+          onLogout={handleLogout}
+          authError={authMessage}
           onNavigate={setPage}
           initialSection={page}
           walls={walls}
@@ -388,7 +522,7 @@ function App() {
           projectId={activeProjectId}
           workspaceId={workspaceId}
           projects={projects}
-          activeProject={projects.find((project) => project.id === activeProjectId)}
+          activeProject={projects.find((project) => project.id === activeProjectId) || null}
           onSelectProject={selectProject}
           onCreateProject={handleCreateProject}
           onUpdateProject={handleUpdateProject}
@@ -397,14 +531,7 @@ function App() {
         />
         )
       )}
-      <AIChatWidget
-  workspaceId={workspaceId}
-  activeProjectId={activeProjectId}
-  activeProject={projects.find(
-    (project) => project.id === activeProjectId
-  )}
-  projects={projects}
-/>
+      {user && <AIChatWidget />}
     </>
   );
 }

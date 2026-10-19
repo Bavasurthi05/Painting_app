@@ -10,20 +10,35 @@
 }
 
 .home-navbar {
+  position: relative;
   min-height: 76px;
-  padding: 14px max(24px, calc((100% - var(--page-content-width)) / 2));
+  padding: 12px max(24px, calc((100% - var(--page-content-width)) / 2));
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 24px;
+  gap: clamp(16px, 2vw, 28px);
   background: #244c3a;
   color: white;
+  box-shadow: 0 3px 14px #183b2a24;
+}
+
+.no-house-notice {
+  width: min(100% - 40px, var(--page-content-width));
+  margin: 20px auto 0;
+  padding: 12px 16px;
+  border: 1px solid #d9e2d6;
+  border-radius: 8px;
+  background: #eef3e9;
+  color: #405548;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .home-brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
   color: white;
   font-size: 22px;
   font-weight: 800;
@@ -48,18 +63,49 @@
 
 .home-nav-links {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
-  gap: 24px;
+  justify-content: center;
+  gap: clamp(4px, 0.8vw, 12px);
+  min-width: 0;
 }
 
 .home-nav-links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 9px;
+  border-radius: 8px;
   color: #fff;
   text-decoration: none;
   font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 
 .home-nav-links a:hover {
+  background: #ffffff12;
   color: #f0a35e;
+}
+
+.home-nav-links a.active {
+  background: #ffffff18;
+  color: #f0a35e;
+  box-shadow: inset 0 -2px 0 #f0a35e;
+}
+
+.profile-nav-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  vertical-align: -3px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .house-nav-switcher {
@@ -408,16 +454,22 @@
   font-size: 10px;
 }
 
-@media (max-width: 850px) {
+@media (max-width: 1120px) {
   .home-navbar {
     flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px 18px;
   }
 
   .home-nav-links {
     order: 3;
     width: 100%;
+    flex: 1 0 100%;
     flex-wrap: wrap;
-    gap: 16px;
+    justify-content: center;
+    gap: 4px 10px;
+    padding: 8px 0 2px;
+    border-top: 1px solid #ffffff24;
   }
 
   .measurement-row,
@@ -431,7 +483,35 @@
   }
 }
 
+@media (max-width: 850px) {
+  .home-navbar {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}
+
 @media (max-width: 560px) {
+  .home-navbar {
+    padding: 12px 16px;
+  }
+
+  .home-brand {
+    font-size: 20px;
+  }
+
+  .home-nav-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .home-nav-links a {
+    justify-content: flex-start;
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
   .home-tools {
     padding: 36px 16px;
   }
