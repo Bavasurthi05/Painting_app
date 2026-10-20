@@ -340,7 +340,7 @@ def _connect(database_path: str) -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
-def create_app(test_config: dict[str, Any] | None = None) -> Flask:
+    create_app(test_config: dict[str, Any] | None = None) -> Flask:
     app = Flask(__name__)
 
     app.config.from_mapping(
@@ -438,7 +438,7 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
                 token_hash TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 expires_at INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+              def  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
