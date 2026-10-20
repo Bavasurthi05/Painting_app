@@ -340,8 +340,8 @@ def _connect(database_path: str) -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
-    create_app(test_config: dict[str, Any] | None = None) -> Flask:
-    app = Flask(__name__)
+    def create_app(test_config: dict[str, Any] | None = None) -> Flask:
+        app = Flask(__name__)
 
     app.config.from_mapping(
         DATABASE=os.getenv("DATABASE", str(DEFAULT_DATABASE_PATH)),
